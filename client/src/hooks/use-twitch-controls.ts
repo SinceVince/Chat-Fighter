@@ -23,11 +23,13 @@ export function useTwitchControls({ gridSize, columns, enabled }: UseTwitchContr
 
   const p1CursorRef = useRef(p1Cursor);
   const p2CursorRef = useRef(p2Cursor);
+  const isP1TurnRef = useRef(isP1Turn);
   const userCooldownRef = useRef<Map<string, number>>(new Map());
   const COOLDOWN_MS = 5000; // 5 seconds
 
   p1CursorRef.current = p1Cursor;
   p2CursorRef.current = p2Cursor;
+  isP1TurnRef.current = isP1Turn;
 
   useEffect(() => {
     return () => {
@@ -65,7 +67,8 @@ export function useTwitchControls({ gridSize, columns, enabled }: UseTwitchContr
       // Update cooldown
       userCooldownRef.current.set(user, now);
 
-      const currentCursor = isP1Turn ? p1CursorRef.current : p2CursorRef.current;
+      const currentTurn = isP1TurnRef.current;
+      const currentCursor = currentTurn ? p1CursorRef.current : p2CursorRef.current;
       let newIndex = currentCursor;
       const rows = Math.ceil(gridSize / columns);
       const currentRow = Math.floor(newIndex / columns);
@@ -91,11 +94,11 @@ export function useTwitchControls({ gridSize, columns, enabled }: UseTwitchContr
         else newIndex = currentRow * columns; // Wrap to left
         handled = true;
       } else if (cmd === "!select") {
-        if (isP1Turn && !p1Selection) {
+        if (currentTurn && !p1Selection) {
           setP1Selection({ index: currentCursor, user });
           setIsP1Turn(false);
           setP2Cursor(0);
-        } else if (!isP1Turn && !p2Selection) {
+        } else if (!currentTurn && !p2Selection) {
           setP2Selection({ index: currentCursor, user });
         }
         handled = true;
@@ -107,7 +110,7 @@ export function useTwitchControls({ gridSize, columns, enabled }: UseTwitchContr
       }
 
       if (handled) {
-        if (isP1Turn) {
+        if (currentTurn) {
           setP1Cursor(newIndex);
         } else {
           setP2Cursor(newIndex);

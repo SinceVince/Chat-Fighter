@@ -13,6 +13,9 @@ export default function SelectScreen() {
   const { data: fighters, isLoading } = useFighters();
   const [channelInput, setChannelInput] = useState("");
   
+  // Get channel from environment variable or use empty string
+  const defaultChannel = import.meta.env.VITE_TWITCH_CHANNEL || "";
+  
   // Grid Configuration
   const COLUMNS = 8;
   const fightersList = fighters || [];
@@ -36,6 +39,13 @@ export default function SelectScreen() {
 
   const p1Fighter = fightersList[p1Cursor];
   const p2Fighter = fightersList[p2Cursor];
+
+  // Auto-connect if channel is provided via environment variable
+  useEffect(() => {
+    if (defaultChannel && !isConnected) {
+      connect(defaultChannel);
+    }
+  }, []); // Empty dependency array - only run once on mount
 
   // Manual connect handler
   const handleConnect = (e: React.FormEvent) => {
@@ -75,13 +85,14 @@ export default function SelectScreen() {
               value={channelInput}
               onChange={(e) => setChannelInput(e.target.value)}
               className="w-48 bg-black/50 border-primary/50 text-white font-body"
+              data-testid="input-twitch-channel"
             />
-            <RetroButton type="submit" size="sm" variant="primary">
+            <RetroButton type="submit" size="sm" variant="primary" data-testid="button-connect">
               Connect <Wifi className="w-3 h-3 ml-2" />
             </RetroButton>
           </form>
         ) : (
-          <RetroButton onClick={disconnect} size="sm" variant="danger">
+          <RetroButton onClick={disconnect} size="sm" variant="danger" data-testid="button-disconnect">
             Disconnect <WifiOff className="w-3 h-3 ml-2" />
           </RetroButton>
         )}
