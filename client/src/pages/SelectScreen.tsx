@@ -5,15 +5,16 @@ import { FighterCard } from "@/components/FighterCard";
 import { AdminPanel } from "@/components/AdminPanel";
 import { RetroButton } from "@/components/RetroButton";
 import { Input } from "@/components/ui/input";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Wifi, WifiOff, Gamepad2, Trophy } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function SelectScreen() {
   const { data: fighters, isLoading } = useFighters();
   const [channelInput, setChannelInput] = useState("");
   
   // Grid Configuration
-  const COLUMNS = 4; // Adjust based on layout needs
+  const COLUMNS = 8;
   const fightersList = fighters || [];
   
   const { 
@@ -21,17 +22,20 @@ export default function SelectScreen() {
     disconnect, 
     isConnected, 
     channel, 
-    cursorIndex, 
+    p1Cursor,
+    p2Cursor,
     lastAction, 
-    selection 
+    p1Selection,
+    p2Selection,
+    isP1Turn
   } = useTwitchControls({
     gridSize: fightersList.length,
     columns: COLUMNS,
     enabled: true
   });
 
-  const activeFighter = fightersList[cursorIndex];
-  const selectedFighter = selection ? fightersList[selection.index] : null;
+  const p1Fighter = fightersList[p1Cursor];
+  const p2Fighter = fightersList[p2Cursor];
 
   // Manual connect handler
   const handleConnect = (e: React.FormEvent) => {
@@ -83,44 +87,47 @@ export default function SelectScreen() {
         )}
       </div>
 
-      <div className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-8 h-[600px]">
+      <div className="w-full max-w-screen grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-screen">
         
         {/* LEFT: P1 (Twitch Chat) Stats */}
-        <div className="hidden lg:flex lg:col-span-3 flex-col justify-end space-y-4">
-           <div className="bg-card/50 border border-primary/30 p-4 rounded-lg backdrop-blur-sm">
-             <h2 className="text-primary font-arcade text-xs mb-2 flex items-center gap-2">
-               <Gamepad2 className="w-4 h-4" /> PLAYER 1
+        <div className="hidden lg:flex lg:col-span-2 flex-col justify-start space-y-2 pt-4">
+           <div className={cn(
+             "bg-card/60 border p-3 rounded-lg backdrop-blur-sm transition-all",
+             isP1Turn ? "border-primary/60" : "border-primary/20 opacity-60"
+           )}>
+             <h2 className="text-primary font-arcade text-[10px] mb-1 flex items-center gap-1">
+               <Gamepad2 className="w-3 h-3" /> P1
              </h2>
-             <div className="font-display text-2xl text-white uppercase tracking-wider">
-               Twitch Chat
+             <div className="font-display text-lg text-white uppercase tracking-wider">
+               Chat
              </div>
-             {lastAction && (
+             {p1Selection && (
                <motion.div 
-                 initial={{ opacity: 0, x: -10 }}
-                 animate={{ opacity: 1, x: 0 }}
-                 key={lastAction.command + Date.now()} // Force re-render animation
-                 className="mt-4 p-2 bg-black/40 rounded border-l-2 border-secondary"
+                 initial={{ scale: 0 }}
+                 animate={{ scale: 1 }}
+                 className="mt-2 p-1 bg-accent text-accent-foreground rounded text-[9px] font-arcade text-center"
                >
-                 <div className="text-[10px] text-muted-foreground font-mono">LATEST INPUT</div>
-                 <div className="text-secondary font-arcade text-xs">
-                   {lastAction.user}: <span className="text-white">{lastAction.command}</span>
-                 </div>
+                 LOCKED IN
                </motion.div>
              )}
-           </div>
-
-           {/* Controls Guide */}
-           <div className="bg-black/40 p-4 rounded text-xs text-muted-foreground font-mono space-y-1">
-             <div>!UP / !DOWN</div>
-             <div>!LEFT / !RIGHT</div>
-             <div className="text-accent">!SELECT to confirm</div>
+             {lastAction && isP1Turn && (
+               <motion.div 
+                 initial={{ opacity: 0 }}
+                 animate={{ opacity: 1 }}
+                 key={lastAction.command + Date.now()}
+                 className="mt-1 p-1 bg-black/60 rounded border-l border-secondary text-[9px]"
+               >
+                 <div className="text-muted-foreground">{lastAction.user}</div>
+                 <div className="text-secondary font-arcade">{lastAction.command}</div>
+               </motion.div>
+             )}
            </div>
         </div>
 
         {/* CENTER: Grid */}
-        <div className="lg:col-span-6 flex items-center justify-center">
+        <div className="lg:col-span-8 flex items-center justify-center p-2">
           <div 
-            className="grid grid-cols-4 gap-4 w-full"
+            className="grid gap-2 w-full"
             style={{ 
               gridTemplateColumns: `repeat(${COLUMNS}, minmax(0, 1fr))` 
             }}
@@ -129,71 +136,59 @@ export default function SelectScreen() {
               <FighterCard
                 key={fighter.id}
                 fighter={fighter}
-                isActive={idx === cursorIndex}
-                isSelected={selection?.index === idx}
-                onClick={() => {
-                  // Allow manual click for testing
-                  if (!isConnected) {
-                    // Logic to simulate cursor move if wanted, or just nothing
-                  }
-                }}
+                isP1Active={idx === p1Cursor && isP1Turn}
+                isP2Active={idx === p2Cursor && !isP1Turn}
+                isActive={idx === p1Cursor || idx === p2Cursor}
+                isSelected={p1Selection?.index === idx || p2Selection?.index === idx}
               />
             ))}
             
-            {/* Fill empty slots visually if needed to maintain grid shape */}
-            {Array.from({ length: Math.max(0, COLUMNS * Math.ceil(fightersList.length / COLUMNS) - fightersList.length) }).map((_, i) => (
-              <div key={`empty-${i}`} className="bg-white/5 rounded border border-white/5 opacity-20" />
-            ))}
           </div>
         </div>
 
-        {/* RIGHT: Active Character Portrait */}
-        <div className="lg:col-span-3 relative h-full flex flex-col">
-          <AnimatePresence mode="wait">
-            <motion.div 
-              key={activeFighter ? activeFighter.id : 'empty'}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.3 }}
-              className="h-full w-full rounded-xl overflow-hidden border-2 border-white/10 relative bg-gradient-to-b from-transparent to-black"
-            >
-              {activeFighter ? (
-                <>
-                  <div className="absolute inset-0 bg-primary/20 mix-blend-overlay z-10" />
-                  <img 
-                    src={activeFighter.imageUrl} 
-                    alt={activeFighter.name}
-                    className="w-full h-full object-cover object-top opacity-80"
-                  />
-                  
-                  {/* Stats Overlay */}
-                  <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black via-black/80 to-transparent z-20">
-                     <h2 className="text-4xl font-display text-white uppercase italic text-shadow-neon mb-2">
-                       {activeFighter.name}
-                     </h2>
-                     <p className="text-sm font-body text-gray-300 border-l-2 border-primary pl-3">
-                       {activeFighter.description || "No description available."}
-                     </p>
+        {/* RIGHT: P2 and Info */}
+        <div className="hidden lg:flex lg:col-span-2 flex-col justify-start space-y-2 pt-4">
+          <div className={cn(
+            "bg-card/60 border p-3 rounded-lg backdrop-blur-sm transition-all",
+            !isP1Turn ? "border-secondary/60" : "border-secondary/20 opacity-60"
+          )}>
+            <h2 className="text-secondary font-arcade text-[10px] mb-1 flex items-center gap-1">
+              <Trophy className="w-3 h-3" /> P2
+            </h2>
+            <div className="font-display text-lg text-white uppercase tracking-wider">
+              Chat
+            </div>
+            {p2Selection && (
+              <motion.div 
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="mt-2 p-1 bg-accent text-accent-foreground rounded text-[9px] font-arcade text-center"
+              >
+                LOCKED IN
+              </motion.div>
+            )}
+            {lastAction && !isP1Turn && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                key={lastAction.command + Date.now()}
+                className="mt-1 p-1 bg-black/60 rounded border-l border-primary text-[9px]"
+              >
+                <div className="text-muted-foreground">{lastAction.user}</div>
+                <div className="text-primary font-arcade">{lastAction.command}</div>
+              </motion.div>
+            )}
+          </div>
 
-                     {selection && selection.index === fightersList.indexOf(activeFighter) && (
-                       <motion.div 
-                         initial={{ scale: 0 }}
-                         animate={{ scale: 1 }}
-                         className="mt-4 bg-accent text-black font-arcade text-xs p-2 text-center rounded animate-pulse"
-                       >
-                         LOCKED IN BY {selection.user.toUpperCase()}
-                       </motion.div>
-                     )}
-                  </div>
-                </>
-              ) : (
-                <div className="h-full w-full flex items-center justify-center text-muted-foreground font-arcade text-xs text-center p-4">
-                  ROSTER EMPTY<br/>ADD FIGHTERS VIA CONFIG
-                </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
+          {/* Controls */}
+          <div className="bg-black/40 p-3 rounded text-[9px] text-muted-foreground font-mono space-y-0.5">
+            <div>!UP / !DOWN</div>
+            <div>!LEFT / !RIGHT</div>
+            <div className="text-accent">!SELECT to pick</div>
+            <div className="text-xs mt-2 border-t border-white/10 pt-2">
+              {isP1Turn ? "▶ P1 choosing..." : "▶ P2 choosing..."}
+            </div>
+          </div>
         </div>
       </div>
     </div>

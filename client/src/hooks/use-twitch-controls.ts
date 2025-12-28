@@ -14,11 +14,20 @@ export function useTwitchControls({ gridSize, columns, enabled }: UseTwitchContr
   const [isConnected, setIsConnected] = useState(false);
   const [cursorIndex, setCursorIndex] = useState(0);
   const [lastAction, setLastAction] = useState<{ user: string; command: string } | null>(null);
-  const [selection, setSelection] = useState<{ index: number; user: string } | null>(null);
+  const [p1Selection, setP1Selection] = useState<{ index: number; user: string } | null>(null);
+  const [p2Selection, setP2Selection] = useState<{ index: number; user: string } | null>(null);
+  const [p1Cursor, setP1Cursor] = useState(0);
+  const [p2Cursor, setP2Cursor] = useState(0);
+  const [isP1Turn, setIsP1Turn] = useState(true);
   const { toast } = useToast();
 
-  const cursorRef = useRef(cursorIndex);
-  cursorRef.current = cursorIndex; // Keep ref updated for closure access
+  const p1CursorRef = useRef(p1Cursor);
+  const p2CursorRef = useRef(p2Cursor);
+  const userCooldownRef = useRef<Map<string, number>>(new Map());
+  const COOLDOWN_MS = 5000; // 5 seconds
+
+  p1CursorRef.current = p1Cursor;
+  p2CursorRef.current = p2Cursor;
 
   useEffect(() => {
     return () => {
@@ -46,7 +55,18 @@ export function useTwitchControls({ gridSize, columns, enabled }: UseTwitchContr
       const cmd = message.toLowerCase().trim();
       const user = tags["display-name"] || "Anonymous";
 
-      let newIndex = cursorRef.current;
+      // Check cooldown
+      const now = Date.now();
+      const lastAction = userCooldownRef.current.get(user) || 0;
+      if (now - lastAction < COOLDOWN_MS) {
+        return; // Ignore if within cooldown
+      }
+
+      // Update cooldown
+      userCooldownRef.current.set(user, now);
+
+      const currentCursor = isP1Turn ? p1CursorRef.current : p2CursorRef.current;
+      let newIndex = currentCursor;
       const rows = Math.ceil(gridSize / columns);
       const currentRow = Math.floor(newIndex / columns);
       const currentCol = newIndex % columns;
@@ -71,7 +91,13 @@ export function useTwitchControls({ gridSize, columns, enabled }: UseTwitchContr
         else newIndex = currentRow * columns; // Wrap to left
         handled = true;
       } else if (cmd === "!select") {
-        setSelection({ index: cursorRef.current, user });
+        if (isP1Turn && !p1Selection) {
+          setP1Selection({ index: currentCursor, user });
+          setIsP1Turn(false);
+          setP2Cursor(0);
+        } else if (!isP1Turn && !p2Selection) {
+          setP2Selection({ index: currentCursor, user });
+        }
         handled = true;
       }
 
@@ -81,7 +107,11 @@ export function useTwitchControls({ gridSize, columns, enabled }: UseTwitchContr
       }
 
       if (handled) {
-        setCursorIndex(newIndex);
+        if (isP1Turn) {
+          setP1Cursor(newIndex);
+        } else {
+          setP2Cursor(newIndex);
+        }
         setLastAction({ user, command: cmd });
       }
     });
@@ -112,6 +142,12 @@ export function useTwitchControls({ gridSize, columns, enabled }: UseTwitchContr
       setClient(null);
       setIsConnected(false);
       setChannel("");
+      setP1Selection(null);
+      setP2Selection(null);
+      setIsP1Turn(true);
+      setP1Cursor(0);
+      setP2Cursor(0);
+      userCooldownRef.current.clear();
     }
   };
 
@@ -120,9 +156,13 @@ export function useTwitchControls({ gridSize, columns, enabled }: UseTwitchContr
     disconnect,
     isConnected,
     channel,
-    cursorIndex,
+    cursorIndex: isP1Turn ? p1Cursor : p2Cursor,
     lastAction,
-    selection,
-    setCursorIndex, // Manual control for testing
+    p1Selection,
+    p2Selection,
+    isP1Turn,
+    p1Cursor,
+    p2Cursor,
+    setCursorIndex: isP1Turn ? setP1Cursor : setP2Cursor,
   };
 }
