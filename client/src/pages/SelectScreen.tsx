@@ -103,7 +103,7 @@ export default function SelectScreen() {
         {/* LEFT: P1 (Twitch Chat) Stats */}
         <div className="hidden lg:flex lg:col-span-2 flex-col justify-start space-y-2 pt-4">
            <div className={cn(
-             "bg-card/60 border p-3 rounded-lg backdrop-blur-sm transition-all",
+             "bg-card/60 border p-3 rounded-lg backdrop-blur-sm transition-all flex flex-col",
              isP1Turn ? "border-primary/60" : "border-primary/20 opacity-60"
            )}>
              <h2 className="text-primary font-arcade text-[10px] mb-1 flex items-center gap-1">
@@ -112,16 +112,31 @@ export default function SelectScreen() {
              <div className="font-display text-lg text-white uppercase tracking-wider">
                Chat
              </div>
-             {p1Selection && (
+             {p1Selection && fightersList[p1Selection.index] && (
                <motion.div 
-                 initial={{ scale: 0 }}
-                 animate={{ scale: 1 }}
-                 className="mt-2 p-1 bg-accent text-accent-foreground rounded text-[9px] font-arcade text-center"
+                 initial={{ scale: 0, opacity: 0 }}
+                 animate={{ scale: 1, opacity: 1 }}
+                 className="mt-2 space-y-2"
                >
-                 LOCKED IN
+                 <div className="p-1 bg-accent text-accent-foreground rounded text-[9px] font-arcade text-center">
+                   LOCKED IN
+                 </div>
+                 <div className="relative w-full h-32 rounded overflow-hidden border-2 border-primary/50">
+                   <img 
+                     src={fightersList[p1Selection.index].imageUrl} 
+                     alt={fightersList[p1Selection.index].name}
+                     className="w-full h-full object-cover"
+                     data-testid="img-p1-selection"
+                   />
+                   <div className="absolute bottom-0 left-0 right-0 bg-black/90 px-1 py-0.5">
+                     <p className="text-[8px] font-arcade text-primary text-center truncate">
+                       {fightersList[p1Selection.index].name}
+                     </p>
+                   </div>
+                 </div>
                </motion.div>
              )}
-             {lastAction && isP1Turn && (
+             {lastAction && isP1Turn && !p1Selection && (
                <motion.div 
                  initial={{ opacity: 0 }}
                  animate={{ opacity: 1 }}
@@ -160,7 +175,7 @@ export default function SelectScreen() {
         {/* RIGHT: P2 and Info */}
         <div className="hidden lg:flex lg:col-span-2 flex-col justify-start space-y-2 pt-4">
           <div className={cn(
-            "bg-card/60 border p-3 rounded-lg backdrop-blur-sm transition-all",
+            "bg-card/60 border p-3 rounded-lg backdrop-blur-sm transition-all flex flex-col",
             !isP1Turn ? "border-secondary/60" : "border-secondary/20 opacity-60"
           )}>
             <h2 className="text-secondary font-arcade text-[10px] mb-1 flex items-center gap-1">
@@ -169,16 +184,31 @@ export default function SelectScreen() {
             <div className="font-display text-lg text-white uppercase tracking-wider">
               Chat
             </div>
-            {p2Selection && (
+            {p2Selection && fightersList[p2Selection.index] && (
               <motion.div 
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="mt-2 p-1 bg-accent text-accent-foreground rounded text-[9px] font-arcade text-center"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="mt-2 space-y-2"
               >
-                LOCKED IN
+                <div className="p-1 bg-accent text-accent-foreground rounded text-[9px] font-arcade text-center">
+                  LOCKED IN
+                </div>
+                <div className="relative w-full h-32 rounded overflow-hidden border-2 border-secondary/50">
+                  <img 
+                    src={fightersList[p2Selection.index].imageUrl} 
+                    alt={fightersList[p2Selection.index].name}
+                    className="w-full h-full object-cover"
+                    data-testid="img-p2-selection"
+                  />
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/90 px-1 py-0.5">
+                    <p className="text-[8px] font-arcade text-secondary text-center truncate">
+                      {fightersList[p2Selection.index].name}
+                    </p>
+                  </div>
+                </div>
               </motion.div>
             )}
-            {lastAction && !isP1Turn && (
+            {lastAction && !isP1Turn && !p2Selection && (
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
