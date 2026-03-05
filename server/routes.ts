@@ -36,7 +36,13 @@ export async function registerRoutes(
 
   // Seed data if empty
   const existing = await storage.getFighters();
-  if (existing.length === 0) {
+  if (existing.length === 0 || existing.some(f => f.imageUrl.includes('discordapp'))) {
+    // Clear existing if they have broken discord links
+    if (existing.length > 0) {
+      for (const f of existing) {
+        await storage.deleteFighter(f.id);
+      }
+    }
     const seedFighters = [
       { name: "Ashcoat", imageUrl: "/images/ashcoat.png", description: "Ready to fight." },
       { name: "Astronaut Teemo", imageUrl: "/images/asto.png", description: "From the stars." },
