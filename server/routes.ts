@@ -34,6 +34,35 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // Selection endpoints for TTS bot integration
+  app.post("/api/selections/:channel", async (req, res) => {
+    try {
+      const { channel } = req.params;
+      const { p1FighterId, p2FighterId } = req.body;
+      const selection = await storage.saveSelection(
+        channel,
+        p1FighterId ? Number(p1FighterId) : null,
+        p2FighterId ? Number(p2FighterId) : null
+      );
+      res.json(selection);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to save selection" });
+    }
+  });
+
+  app.get("/api/selections/:channel", async (req, res) => {
+    try {
+      const { channel } = req.params;
+      const selection = await storage.getSelection(channel);
+      if (!selection) {
+        return res.status(404).json({ message: "No selection found for channel" });
+      }
+      res.json(selection);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch selection" });
+    }
+  });
+
   // Seed data if empty
   const existing = await storage.getFighters();
   if (existing.length === 0 || existing.some(f => f.imageUrl.includes('discordapp'))) {

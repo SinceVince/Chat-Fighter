@@ -47,6 +47,25 @@ export default function SelectScreen() {
     }
   }, []); // Empty dependency array - only run once on mount
 
+  // Save selections when fighters are chosen
+  useEffect(() => {
+    if (!channel || fightersList.length === 0) return;
+
+    const p1FighterId = p1Selection ? fightersList[p1Selection.index]?.id : null;
+    const p2FighterId = p2Selection ? fightersList[p2Selection.index]?.id : null;
+
+    // Only save if at least one fighter is selected
+    if (p1FighterId || p2FighterId) {
+      fetch(`/api/selections/${encodeURIComponent(channel)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ p1FighterId, p2FighterId }),
+      }).catch(() => {
+        // Silent fail - don't disrupt the UI
+      });
+    }
+  }, [channel, p1Selection, p2Selection, fightersList]);
+
   // Manual connect handler
   const handleConnect = (e: React.FormEvent) => {
     e.preventDefault();
