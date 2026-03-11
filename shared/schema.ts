@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -14,6 +14,7 @@ export const streamSelections = pgTable("stream_selections", {
   channel: text("channel").notNull().unique(),
   p1FighterId: integer("p1_fighter_id"),
   p2FighterId: integer("p2_fighter_id"),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const insertFighterSchema = createInsertSchema(fighters).omit({ id: true });

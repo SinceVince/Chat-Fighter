@@ -45,14 +45,14 @@ export class DatabaseStorage implements IStorage {
     if (existing.length > 0) {
       const [updated] = await db
         .update(streamSelections)
-        .set({ p1FighterId, p2FighterId })
+        .set({ p1FighterId, p2FighterId, updatedAt: new Date() })
         .where(eq(streamSelections.channel, channel))
         .returning();
       return await this.enrichSelection(updated);
     } else {
       const [created] = await db
         .insert(streamSelections)
-        .values({ channel, p1FighterId, p2FighterId })
+        .values({ channel, p1FighterId, p2FighterId, updatedAt: new Date() })
         .returning();
       return await this.enrichSelection(created);
     }

@@ -34,6 +34,15 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // CORS middleware for public selection endpoints (needed for StreamElements widget)
+  app.use("/api/selections", (req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    if (req.method === "OPTIONS") return res.sendStatus(200);
+    next();
+  });
+
   // Selection endpoints for TTS bot integration
   app.post("/api/selections/:channel", async (req, res) => {
     try {

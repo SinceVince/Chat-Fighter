@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: transparent;
+    font-family: 'Press Start 2P', monospace;
+    overflow: hidden;
+    width: 1920px;
+    height: 1080px;
+  }
+
+  #overlay {
+    position: absolute;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: flex-end;
+    gap: 60px;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+  }
+
+  #overlay.visible {
+    opacity: 1;
+  }
+
+  .fighter-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .fighter-image {
+    width: 160px;
+    height: 160px;
+    object-fit: contain;
+    image-rendering: pixelated;
+    filter: drop-shadow(0 0 16px rgba(255,255,255,0.5));
+    transition: transform 0.15s ease, filter 0.15s ease;
+  }
+
+  .fighter-image.speaking {
+    animation: talking 0.25s steps(1) infinite;
+    filter: drop-shadow(0 0 24px rgba(255, 220, 0, 0.9));
+    transform: scale(1.08);
+  }
+
+  @keyframes talking {
+    0%   { transform: scale(1.08) translateY(0px); }
+    50%  { transform: scale(1.10) translateY(-4px); }
+    100% { transform: scale(1.08) translateY(0px); }
+  }
+
+  .fighter-label {
+    background: rgba(0, 0, 0, 0.85);
+    border: 2px solid #fff;
+    color: #fff;
+    padding: 6px 12px;
+    font-size: 11px;
+    text-align: center;
+    text-shadow: 2px 2px 0 #000;
+    white-space: nowrap;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .player-tag {
+    font-size: 10px;
+    padding: 4px 10px;
+    margin-bottom: 4px;
+  }
+
+  #p1 .player-tag { background: #0044cc; border-color: #66aaff; color: #fff; }
+  #p2 .player-tag { background: #cc0000; border-color: #ff6666; color: #fff; }
+
+  #vs-label {
+    font-size: 32px;
+    color: #fff;
+    text-shadow: 0 0 20px #ff0, 3px 3px 0 #000;
+    align-self: center;
+    padding-bottom: 50px;
+    animation: pulse-vs 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse-vs {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); }
+  }
+
+  #announce-banner {
+    position: absolute;
+    top: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.88);
+    border: 3px solid #ffdd00;
+    color: #ffdd00;
+    padding: 14px 28px;
+    font-size: 14px;
+    text-align: center;
+    text-shadow: 2px 2px 0 #000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    white-space: nowrap;
+    max-width: 900px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 0 30px rgba(255, 221, 0, 0.4);
+  }
+
+  #announce-banner.visible {
+    opacity: 1;
+  }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div id="announce-banner">FIGHTER SELECT</div>
+
+<div id="overlay">
+  <div id="p1" class="fighter-box">
+    <div class="fighter-label player-tag">PLAYER 1</div>
+    <img id="p1-img" class="fighter-image" src="" alt="Player 1">
+    <div id="p1-name" class="fighter-label">???</div>
+  </div>
+
+  <div id="vs-label">VS</div>
+
+  <div id="p2" class="fighter-box">
+    <div class="fighter-label player-tag">PLAYER 2</div>
+    <img id="p2-img" class="fighter-image" src="" alt="Player 2">
+    <div id="p2-name" class="fighter-label">???</div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CONFIGURATION — EDIT THIS SECTION
+// Replace YOUR_VPS_IP with your actual DigitalOcean IP address
+// Replace YOUR_TWITCH_CHANNEL with your Twitch username (lowercase)
+// ============================================================
+const VPS_IP      = "YOUR_VPS_IP";        // e.g. "143.198.123.45"
+const VPS_PORT    = "3000";               // Keep as 3000 unless you changed it
+const CHANNEL     = "YOUR_TWITCH_CHANNEL"; // e.g. "mychannelname"
+const POLL_MS     = 3000;                 // How often to check (ms). 3000 = every 3 seconds
+// ============================================================
+
+const API_BASE = `http://${VPS_IP}:${VPS_PORT}`;
+
+let lastUpdatedAt = null;
+let speaking = false;
+
+const overlay        = document.getElementById("overlay");
+const banner         = document.getElementById("announce-banner");
+const p1Img          = document.getElementById("p1-img");
+const p1Name         = document.getElementById("p1-name");
+const p2Img          = document.getElementById("p2-img");
+const p2Name         = document.getElementById("p2-name");
+
+// --- Speak using Web Speech API (built into browsers, FREE, no API key needed) ---
+function speak(text, onEnd) {
+  if (!window.speechSynthesis) return onEnd && onEnd();
+
+  window.speechSynthesis.cancel(); // Stop anything already speaking
+
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.rate  = 0.95;
+  utt.pitch = 1.0;
+  utt.volume = 1.0;
+
+  // Try to find a good English voice
+  const voices = window.speechSynthesis.getVoices();
+  const preferred = voices.find(v => v.lang === "en-US" && v.name.includes("Google"))
+                 || voices.find(v => v.lang === "en-US")
+                 || voices[0];
+  if (preferred) utt.voice = preferred;
+
+  utt.onend = () => { if (onEnd) onEnd(); };
+  window.speechSynthesis.speak(utt);
+}
+
+// --- Mouth animation ---
+function setP1Speaking(on) {
+  p1Img.classList.toggle("speaking", on);
+}
+function setP2Speaking(on) {
+  p2Img.classList.toggle("speaking", on);
+}
+
+// --- Show/hide overlay ---
+function showOverlay() {
+  overlay.classList.add("visible");
+}
+
+// --- Show announcement banner briefly ---
+function showBanner(text) {
+  banner.textContent = text;
+  banner.classList.add("visible");
+  setTimeout(() => banner.classList.remove("visible"), 5000);
+}
+
+// --- Update fighter display ---
+function updateFighters(selection) {
+  const p1 = selection.p1Fighter;
+  const p2 = selection.p2Fighter;
+
+  if (p1) {
+    p1Img.src  = `${API_BASE}${p1.imageUrl}`;
+    p1Name.textContent = p1.name;
+  }
+  if (p2) {
+    p2Img.src  = `${API_BASE}${p2.imageUrl}`;
+    p2Name.textContent = p2.name;
+  }
+
+  showOverlay();
+}
+
+// --- Announce fighters with TTS and mouth animation ---
+function announceSelection(selection) {
+  if (speaking) return;
+  speaking = true;
+
+  const p1 = selection.p1Fighter;
+  const p2 = selection.p2Fighter;
+
+  let fullAnnouncement = "";
+  if (p1 && p2) {
+    fullAnnouncement = `${p1.name} versus ${p2.name}. FIGHT!`;
+  } else if (p1) {
+    fullAnnouncement = `Player 1 has chosen ${p1.name}!`;
+  } else if (p2) {
+    fullAnnouncement = `Player 2 has chosen ${p2.name}!`;
+  }
+
+  if (!fullAnnouncement) { speaking = false; return; }
+
+  showBanner(fullAnnouncement.toUpperCase());
+  updateFighters(selection);
+
+  // Speak Player 1's name first
+  if (p1) {
+    setP1Speaking(true);
+    speak(`Player 1 has selected... ${p1.name}!`, () => {
+      setP1Speaking(false);
+
+      // Then speak Player 2's name
+      if (p2) {
+        setTimeout(() => {
+          setP2Speaking(true);
+          speak(`Player 2 has selected... ${p2.name}! FIGHT!`, () => {
+            setP2Speaking(false);
+            speaking = false;
+          });
+        }, 400);
+      } else {
+        speaking = false;
+      }
+    });
+  } else if (p2) {
+    setP2Speaking(true);
+    speak(`Player 2 has selected... ${p2.name}!`, () => {
+      setP2Speaking(false);
+      speaking = false;
+    });
+  }
+}
+
+// --- Poll the VPS API every few seconds ---
+async function pollSelections() {
+  try {
+    const url = `${API_BASE}/api/selections/${encodeURIComponent(CHANNEL)}`;
+    const res  = await fetch(url);
+    if (!res.ok) return; // 404 = no selection yet, that's fine
+
+    const data = await res.json();
+    const newUpdatedAt = data.updatedAt;
+
+    // Only trigger if this is a NEW selection we haven't seen before
+    if (newUpdatedAt && newUpdatedAt !== lastUpdatedAt) {
+      lastUpdatedAt = newUpdatedAt;
+
+      // Make sure at least one fighter is selected
+      if (data.p1Fighter || data.p2Fighter) {
+        updateFighters(data);
+        announceSelection(data);
+      }
+    }
+  } catch (e) {
+    // Network error — VPS might be restarting, just wait
+  }
+}
+
+// --- Start polling once voices have loaded ---
+window.speechSynthesis.onvoiceschanged = () => {};
+setTimeout(() => {
+  setInterval(pollSelections, POLL_MS);
+  pollSelections(); // Run immediately on load too
+}, 1500);
+</script>
+</body>
+</html>
