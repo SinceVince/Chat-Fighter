@@ -5,11 +5,13 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import SelectScreen from "@/pages/SelectScreen";
+import TtsOverlay from "@/pages/TtsOverlay";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={SelectScreen} />
+      <Route path="/tts" component={TtsOverlay} />
       <Route component={NotFound} />
     </Switch>
   );
