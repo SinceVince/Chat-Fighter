@@ -34,6 +34,27 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // Kick channel proxy — avoids CORS issues when looking up chatroom IDs from the browser
+  app.get("/api/kick-channel/:channelname", async (req, res) => {
+    try {
+      const response = await fetch(
+        `https://kick.com/api/v1/channels/${encodeURIComponent(req.params.channelname)}`,
+        { headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" } }
+      );
+      if (!response.ok) {
+        return res.status(404).json({ message: "Kick channel not found" });
+      }
+      const data: any = await response.json();
+      const chatroomId = data?.chatroom?.id;
+      if (!chatroomId) {
+        return res.status(404).json({ message: "Could not find chatroom ID for this channel" });
+      }
+      res.json({ chatroomId, channelName: data?.slug || req.params.channelname });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch Kick channel info" });
+    }
+  });
+
   // CORS middleware for public selection endpoints (needed for StreamElements widget)
   app.use("/api/selections", (req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
