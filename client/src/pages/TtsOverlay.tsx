@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTwitchControls } from "@/hooks/use-twitch-controls";
 import { useKickControls } from "@/hooks/use-kick-controls";
-import { cn } from "@/lib/utils";
 
 interface Fighter {
   id: number;
@@ -15,32 +14,37 @@ interface Selection {
   updatedAt?: string;
 }
 
-// --- Speech queue so messages don't overlap ---
 type SpeechJob = { text: string; player: 1 | 2 };
 
+// Twitch = P1's voice  |  Kick = P2's voice
+// Command from either platform: !tts <message>
+// Twitch !tts → P1 fighter speaks
+// Kick   !tts → P2 fighter speaks
+
 export default function TtsOverlay() {
-  // Read channel from URL param: /tts?channel=mychannel
-  const params = new URLSearchParams(window.location.search);
-  const urlChannel = params.get("channel") || "";
+  const params      = new URLSearchParams(window.location.search);
+  const urlTwitch   = params.get("channel") || params.get("twitch") || "";
+  const urlKick     = params.get("kick") || "";
 
-  const [twitchInput, setTwitchInput]   = useState(urlChannel || import.meta.env.VITE_TWITCH_CHANNEL || "");
-  const [kickInput, setKickInput]       = useState(import.meta.env.VITE_KICK_CHANNEL || "");
-  const [showSetup, setShowSetup]       = useState(!urlChannel && !import.meta.env.VITE_TWITCH_CHANNEL);
-  const [selection, setSelection]       = useState<Selection>({});
-  const [p1Speaking, setP1Speaking]     = useState(false);
-  const [p2Speaking, setP2Speaking]     = useState(false);
-  const [p1Text, setP1Text]             = useState("");
-  const [p2Text, setP2Text]             = useState("");
+  const [twitchInput, setTwitchInput] = useState(urlTwitch || import.meta.env.VITE_TWITCH_CHANNEL || "");
+  const [kickInput, setKickInput]     = useState(urlKick || import.meta.env.VITE_KICK_CHANNEL || "");
+  const [showSetup, setShowSetup]     = useState(!urlTwitch && !urlKick && !import.meta.env.VITE_TWITCH_CHANNEL);
 
-  const speechQueueRef  = useRef<SpeechJob[]>([]);
-  const isSpeakingRef   = useRef(false);
-  const pollChannelRef  = useRef<string>("");
+  const [selection, setSelection]     = useState<Selection>({});
+  const [p1Speaking, setP1Speaking]   = useState(false);
+  const [p2Speaking, setP2Speaking]   = useState(false);
+  const [p1Text, setP1Text]           = useState("");
+  const [p2Text, setP2Text]           = useState("");
 
-  // --- Poll API for fighter selections ---
+  const speechQueueRef = useRef<SpeechJob[]>([]);
+  const isSpeakingRef  = useRef(false);
+  const pollChannelRef = useRef("");
+
+  // ── Poll API for current fighter selections ────────────────────────────────
   const pollSelection = useCallback(async (ch: string) => {
     if (!ch) return;
     try {
-      const res = await fetch(`/api/selections/${encodeURIComponent(ch)}`);
+      const res  = await fetch(`/api/selections/${encodeURIComponent(ch)}`);
       if (!res.ok) return;
       const data: Selection = await res.json();
       setSelection(data);
@@ -48,22 +52,20 @@ export default function TtsOverlay() {
   }, []);
 
   useEffect(() => {
-    if (!pollChannelRef.current) return;
-    const interval = setInterval(() => pollSelection(pollChannelRef.current), 3000);
-    pollSelection(pollChannelRef.current);
+    const interval = setInterval(() => {
+      if (pollChannelRef.current) pollSelection(pollChannelRef.current);
+    }, 3000);
     return () => clearInterval(interval);
   }, [pollSelection]);
 
-  // --- TTS engine using Web Speech API ---
+  // ── TTS engine ─────────────────────────────────────────────────────────────
   const processQueue = useCallback(() => {
-    if (isSpeakingRef.current) return;
-    if (speechQueueRef.current.length === 0) return;
+    if (isSpeakingRef.current || speechQueueRef.current.length === 0) return;
 
-    const job = speechQueueRef.current.shift()!;
+    const job         = speechQueueRef.current.shift()!;
     isSpeakingRef.current = true;
-
     const setSpeaking = job.player === 1 ? setP1Speaking : setP2Speaking;
-    const setText     = job.player === 1 ? setP1Text : setP2Text;
+    const setText     = job.player === 1 ? setP1Text     : setP2Text;
 
     setSpeaking(true);
     setText(job.text);
@@ -76,89 +78,95 @@ export default function TtsOverlay() {
     }
 
     window.speechSynthesis.cancel();
-    const utt = new SpeechSynthesisUtterance(job.text);
-    utt.rate   = 0.95;
-    utt.pitch  = job.player === 1 ? 1.1 : 0.85;
-    utt.volume = 1.0;
+    const utt   = new SpeechSynthesisUtterance(job.text);
+    utt.rate    = 0.95;
+    utt.pitch   = job.player === 1 ? 1.15 : 0.82;
+    utt.volume  = 1.0;
 
     const voices = window.speechSynthesis.getVoices();
     if (job.player === 1) {
-      const v = voices.find(v => v.lang === "en-US" && /female|zira|samantha/i.test(v.name))
-             || voices.find(v => v.lang === "en-US")
-             || voices[0];
-      if (v) utt.voice = v;
+      // P1 (Twitch) — higher, brighter voice
+      utt.voice = voices.find(v => v.lang === "en-US" && /female|zira|samantha|karen/i.test(v.name))
+               || voices.find(v => v.lang === "en-US")
+               || voices[0];
     } else {
-      const v = voices.find(v => v.lang === "en-US" && /male|david|alex/i.test(v.name))
-             || voices.find(v => v.lang === "en-US")
-             || voices[0];
-      if (v) utt.voice = v;
+      // P2 (Kick) — lower, deeper voice
+      utt.voice = voices.find(v => v.lang === "en-US" && /male|david|alex|daniel/i.test(v.name))
+               || voices.find(v => v.lang === "en-US")
+               || voices[0];
     }
 
-    utt.onend = () => {
-      setSpeaking(false);
-      setTimeout(() => setText(""), 600);
-      isSpeakingRef.current = false;
-      processQueue();
-    };
-
-    utt.onerror = () => {
-      setSpeaking(false);
-      setText("");
-      isSpeakingRef.current = false;
-      processQueue();
-    };
-
+    utt.onend  = () => { done(setSpeaking, setText); };
+    utt.onerror = () => { done(setSpeaking, setText); };
     window.speechSynthesis.speak(utt);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const done = (setSpeaking: (v: boolean) => void, setText: (v: string) => void) => {
+    setSpeaking(false);
+    setTimeout(() => setText(""), 600);
+    isSpeakingRef.current = false;
+    processQueue();
+  };
 
   const enqueueSpeech = useCallback((player: 1 | 2, text: string) => {
-    // Limit queue to 3 messages so it doesn't pile up endlessly
-    if (speechQueueRef.current.length >= 3) return;
+    if (speechQueueRef.current.length >= 3) return; // don't let queue pile up
     speechQueueRef.current.push({ text, player });
     processQueue();
   }, [processQueue]);
 
-  // --- Chat command handler ---
-  const handleCommand = useCallback((user: string, rawMessage: string) => {
-    const msg = rawMessage.trim();
-
-    if (msg.toLowerCase().startsWith("!p1 ")) {
-      const text = msg.slice(4).trim();
-      if (text) enqueueSpeech(1, text);
-    } else if (msg.toLowerCase().startsWith("!p2 ")) {
-      const text = msg.slice(4).trim();
-      if (text) enqueueSpeech(2, text);
+  // ── Twitch messages → P1 speaks ───────────────────────────────────────────
+  const handleTwitchMessage = useCallback((user: string, msg: string) => {
+    // Accept: !tts <text>  |  !say <text>  |  !p1 <text>
+    const lower = msg.trim().toLowerCase();
+    const prefixes = ["!tts ", "!say ", "!p1 "];
+    for (const prefix of prefixes) {
+      if (lower.startsWith(prefix)) {
+        const text = msg.trim().slice(prefix.length).trim();
+        if (text) enqueueSpeech(1, text);
+        return;
+      }
     }
   }, [enqueueSpeech]);
 
-  const twitch = useTwitchControls({ onCommand: handleCommand });
-  const kick   = useKickControls({ onCommand: handleCommand });
+  // ── Kick messages → P2 speaks ─────────────────────────────────────────────
+  const handleKickMessage = useCallback((user: string, msg: string) => {
+    // Accept: !tts <text>  |  !say <text>  |  !p2 <text>
+    const lower = msg.trim().toLowerCase();
+    const prefixes = ["!tts ", "!say ", "!p2 "];
+    for (const prefix of prefixes) {
+      if (lower.startsWith(prefix)) {
+        const text = msg.trim().slice(prefix.length).trim();
+        if (text) enqueueSpeech(2, text);
+        return;
+      }
+    }
+  }, [enqueueSpeech]);
 
-  // When a channel connects, start polling selections with it
+  const twitch = useTwitchControls({ onCommand: handleTwitchMessage });
+  const kick   = useKickControls({ onCommand: handleKickMessage });
+
+  // When either connects, start polling for fighter selections
   useEffect(() => {
     const ch = twitch.channel || kick.channel;
-    if (ch) {
+    if (ch && ch !== pollChannelRef.current) {
       pollChannelRef.current = ch;
       pollSelection(ch);
     }
   }, [twitch.channel, kick.channel, pollSelection]);
 
-  // Auto-connect on load if URL param or env var is set
+  // Auto-connect from URL params or env vars on first load
   useEffect(() => {
-    const ch = urlChannel || import.meta.env.VITE_TWITCH_CHANNEL;
-    if (ch && !twitch.isConnected) {
-      twitch.connect(ch);
-    }
-    const kc = import.meta.env.VITE_KICK_CHANNEL;
-    if (kc && !kick.isConnected) {
-      kick.connect(kc);
-    }
+    if (urlTwitch) twitch.connect(urlTwitch);
+    else if (import.meta.env.VITE_TWITCH_CHANNEL) twitch.connect(import.meta.env.VITE_TWITCH_CHANNEL);
+
+    if (urlKick) kick.connect(urlKick);
+    else if (import.meta.env.VITE_KICK_CHANNEL) kick.connect(import.meta.env.VITE_KICK_CHANNEL);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleConnect = (e: React.FormEvent) => {
     e.preventDefault();
     if (twitchInput) twitch.connect(twitchInput);
-    if (kickInput) kick.connect(kickInput);
+    if (kickInput)   kick.connect(kickInput);
     setShowSetup(false);
   };
 
@@ -167,54 +175,70 @@ export default function TtsOverlay() {
   const p2 = selection.p2Fighter;
 
   return (
-    // Transparent background — designed as an OBS Browser Source overlay
     <div className="w-screen h-screen relative overflow-hidden" style={{ background: "transparent" }}>
 
-      {/* Setup Panel — only shown when not connected via URL param */}
+      {/* ── Setup panel ───────────────────────────────────────────────────── */}
       {showSetup && (
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50"
-          style={{ background: "rgba(0,0,0,0.92)", border: "2px solid #fff", padding: "24px 32px", minWidth: 340, fontFamily: "monospace" }}
-        >
-          <p style={{ color: "#ffdd00", fontSize: 13, marginBottom: 16, fontWeight: "bold", textAlign: "center" }}>
-            🎮 TTS BOT — SETUP
+        <div style={{
+          position: "absolute", top: "50%", left: "50%",
+          transform: "translate(-50%,-50%)", zIndex: 50,
+          background: "rgba(0,0,0,0.94)", border: "2px solid #fff",
+          padding: "28px 36px", minWidth: 360, fontFamily: "monospace",
+        }}>
+          <p style={{ color: "#ffdd00", fontSize: 13, marginBottom: 6, fontWeight: "bold", textAlign: "center" }}>
+            🎮 FIGHTER TTS BOTS — SETUP
           </p>
-          <form onSubmit={handleConnect} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ color: "#9146FF", fontSize: 11, width: 60 }}>TWITCH</span>
+          <p style={{ color: "#888", fontSize: 10, textAlign: "center", marginBottom: 18 }}>
+            Twitch chat controls P1 · Kick chat controls P2
+          </p>
+
+          <form onSubmit={handleConnect} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {/* Twitch = P1 */}
+            <div>
+              <div style={{ color: "#9146FF", fontSize: 10, marginBottom: 4 }}>
+                TWITCH CHANNEL → P1 Fighter speaks
+              </div>
               <input
                 value={twitchInput}
                 onChange={e => setTwitchInput(e.target.value)}
-                placeholder="channel name"
-                style={{ flex: 1, background: "#111", border: "1px solid #9146FF", color: "#fff", padding: "6px 10px", fontSize: 12 }}
+                placeholder="your twitch channel name"
+                style={{ width: "100%", background: "#111", border: "1px solid #9146FF", color: "#fff", padding: "7px 10px", fontSize: 12 }}
                 data-testid="tts-input-twitch"
               />
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ color: "#53FC18", fontSize: 11, width: 60 }}>KICK</span>
+
+            {/* Kick = P2 */}
+            <div>
+              <div style={{ color: "#53FC18", fontSize: 10, marginBottom: 4 }}>
+                KICK CHANNEL → P2 Fighter speaks
+              </div>
               <input
                 value={kickInput}
                 onChange={e => setKickInput(e.target.value)}
-                placeholder="channel name (optional)"
-                style={{ flex: 1, background: "#111", border: "1px solid #53FC18", color: "#fff", padding: "6px 10px", fontSize: 12 }}
+                placeholder="your kick channel name (optional)"
+                style={{ width: "100%", background: "#111", border: "1px solid #53FC18", color: "#fff", padding: "7px 10px", fontSize: 12 }}
                 data-testid="tts-input-kick"
               />
             </div>
+
             <button
               type="submit"
-              style={{ marginTop: 8, background: "#ffdd00", color: "#000", border: "none", padding: "8px", fontSize: 12, fontWeight: "bold", cursor: "pointer" }}
+              style={{ marginTop: 4, background: "#ffdd00", color: "#000", border: "none", padding: "9px", fontSize: 12, fontWeight: "bold", cursor: "pointer" }}
               data-testid="tts-button-connect"
             >
               CONNECT &amp; START
             </button>
           </form>
-          <p style={{ color: "#666", fontSize: 10, marginTop: 14, textAlign: "center" }}>
-            Chat uses: !p1 &lt;message&gt; or !p2 &lt;message&gt;
-          </p>
+
+          <div style={{ marginTop: 16, padding: "10px", background: "rgba(255,255,255,0.05)", borderRadius: 4 }}>
+            <p style={{ color: "#aaa", fontSize: 10, marginBottom: 4 }}>Chat commands:</p>
+            <p style={{ color: "#9146FF", fontSize: 10 }}>Twitch: <span style={{ color: "#fff" }}>!tts hello chat</span> → P1 speaks</p>
+            <p style={{ color: "#53FC18", fontSize: 10 }}>Kick: &nbsp;&nbsp;<span style={{ color: "#fff" }}>!tts lets go</span> → P2 speaks</p>
+          </div>
         </div>
       )}
 
-      {/* Gear icon to re-open setup */}
+      {/* ── Settings gear ─────────────────────────────────────────────────── */}
       {!showSetup && (
         <button
           onClick={() => setShowSetup(true)}
@@ -222,7 +246,7 @@ export default function TtsOverlay() {
             position: "absolute", top: 8, right: 8, zIndex: 50,
             background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.2)",
             color: "#fff", borderRadius: "50%", width: 28, height: 28,
-            fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center"
+            fontSize: 14, cursor: "pointer",
           }}
           data-testid="tts-button-settings"
           title="Settings"
@@ -231,42 +255,32 @@ export default function TtsOverlay() {
         </button>
       )}
 
-      {/* Connection status dots (top-left, small) */}
+      {/* ── Connection status badges ───────────────────────────────────────── */}
       {!showSetup && (
         <div style={{ position: "absolute", top: 8, left: 8, display: "flex", gap: 6, zIndex: 50 }}>
-          {twitch.isConnected && (
-            <span style={{ background: "#9146FF", borderRadius: 4, padding: "2px 6px", fontSize: 9, color: "#fff", fontFamily: "monospace" }}>
-              TW ✓
-            </span>
-          )}
-          {kick.isConnected && (
-            <span style={{ background: "#53FC18", borderRadius: 4, padding: "2px 6px", fontSize: 9, color: "#000", fontFamily: "monospace" }}>
-              KK ✓
-            </span>
-          )}
-          {!isConnected && (
-            <span style={{ background: "rgba(0,0,0,0.6)", borderRadius: 4, padding: "2px 6px", fontSize: 9, color: "#888", fontFamily: "monospace" }}>
-              NOT CONNECTED
-            </span>
-          )}
+          {twitch.isConnected
+            ? <span style={{ background: "#9146FF", borderRadius: 4, padding: "2px 8px", fontSize: 9, color: "#fff", fontFamily: "monospace" }}>TW P1 ✓</span>
+            : <span style={{ background: "rgba(145,70,255,0.2)", borderRadius: 4, padding: "2px 8px", fontSize: 9, color: "#9146FF", fontFamily: "monospace", border: "1px solid #9146FF55" }}>TW P1 ✗</span>
+          }
+          {kick.isConnected
+            ? <span style={{ background: "#53FC18", borderRadius: 4, padding: "2px 8px", fontSize: 9, color: "#000", fontFamily: "monospace" }}>KK P2 ✓</span>
+            : <span style={{ background: "rgba(83,252,24,0.1)", borderRadius: 4, padding: "2px 8px", fontSize: 9, color: "#53FC18", fontFamily: "monospace", border: "1px solid #53FC1855" }}>KK P2 ✗</span>
+          }
         </div>
       )}
 
-      {/* No fighters selected yet */}
+      {/* ── Waiting message ───────────────────────────────────────────────── */}
       {isConnected && !p1 && !p2 && (
-        <div
-          style={{
-            position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)",
-            background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.2)",
-            color: "#888", padding: "8px 16px", fontSize: 11, fontFamily: "monospace",
-            whiteSpace: "nowrap"
-          }}
-        >
+        <div style={{
+          position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)",
+          background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.15)",
+          color: "#777", padding: "8px 18px", fontSize: 11, fontFamily: "monospace", whiteSpace: "nowrap",
+        }}>
           Waiting for fighters to be selected on the select screen...
         </div>
       )}
 
-      {/* P1 Fighter — bottom left */}
+      {/* ── P1 Fighter (Twitch) — bottom left ────────────────────────────── */}
       {p1 && (
         <FighterBot
           fighter={p1}
@@ -274,11 +288,13 @@ export default function TtsOverlay() {
           speaking={p1Speaking}
           speechText={p1Text}
           playerLabel="P1"
+          platformLabel="TWITCH"
           playerColor="#6699ff"
+          platformColor="#9146FF"
         />
       )}
 
-      {/* P2 Fighter — bottom right */}
+      {/* ── P2 Fighter (Kick) — bottom right ─────────────────────────────── */}
       {p2 && (
         <FighterBot
           fighter={p2}
@@ -286,119 +302,122 @@ export default function TtsOverlay() {
           speaking={p2Speaking}
           speechText={p2Text}
           playerLabel="P2"
+          platformLabel="KICK"
           playerColor="#ff6666"
+          platformColor="#53FC18"
         />
       )}
     </div>
   );
 }
 
-// ── Individual fighter TTS bot component ──────────────────────────────────────
+// ── Fighter bot component ──────────────────────────────────────────────────────
 interface FighterBotProps {
   fighter: Fighter;
   side: "left" | "right";
   speaking: boolean;
   speechText: string;
   playerLabel: string;
+  platformLabel: string;
   playerColor: string;
+  platformColor: string;
 }
 
-function FighterBot({ fighter, side, speaking, speechText, playerLabel, playerColor }: FighterBotProps) {
+function FighterBot({ fighter, side, speaking, speechText, playerLabel, platformLabel, playerColor, platformColor }: FighterBotProps) {
   const isLeft = side === "left";
 
   return (
-    <div
-      style={{
-        position: "absolute",
-        bottom: 0,
-        [isLeft ? "left" : "right"]: 40,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: isLeft ? "flex-start" : "flex-end",
-        gap: 0,
-        zIndex: 10,
-      }}
-    >
+    <div style={{
+      position: "absolute",
+      bottom: 0,
+      [isLeft ? "left" : "right"]: 40,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: isLeft ? "flex-start" : "flex-end",
+    }}>
+
       {/* Speech bubble */}
-      <div
-        style={{
-          maxWidth: 280,
-          background: "rgba(0,0,0,0.88)",
-          border: `2px solid ${playerColor}`,
-          borderRadius: 8,
-          padding: "8px 14px",
-          marginBottom: 8,
-          [isLeft ? "marginLeft" : "marginRight"]: 20,
-          fontSize: 13,
-          color: "#fff",
-          fontFamily: "monospace",
-          wordBreak: "break-word",
-          boxShadow: `0 0 16px ${playerColor}55`,
-          opacity: speechText ? 1 : 0,
-          transition: "opacity 0.3s ease",
-          position: "relative",
-        }}
-      >
-        {speechText}
-        {/* Speech bubble tail */}
+      <div style={{
+        maxWidth: 300,
+        background: "rgba(0,0,0,0.90)",
+        border: `2px solid ${playerColor}`,
+        borderRadius: 10,
+        padding: "9px 16px",
+        marginBottom: 10,
+        [isLeft ? "marginLeft" : "marginRight"]: 24,
+        fontSize: 13,
+        lineHeight: 1.4,
+        color: "#fff",
+        fontFamily: "monospace",
+        wordBreak: "break-word",
+        boxShadow: `0 0 20px ${playerColor}44`,
+        opacity: speechText ? 1 : 0,
+        transition: "opacity 0.3s ease",
+        position: "relative",
+      }}>
+        {speechText || " "}
+        {/* Bubble tail */}
         <div style={{
           position: "absolute",
-          bottom: -10,
-          [isLeft ? "left" : "right"]: 20,
-          width: 0,
-          height: 0,
-          borderLeft: "8px solid transparent",
-          borderRight: "8px solid transparent",
-          borderTop: `10px solid ${playerColor}`,
+          bottom: -11,
+          [isLeft ? "left" : "right"]: 22,
+          width: 0, height: 0,
+          borderLeft: "9px solid transparent",
+          borderRight: "9px solid transparent",
+          borderTop: `11px solid ${playerColor}`,
         }} />
       </div>
 
       {/* Fighter image */}
-      <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <img
-          src={fighter.imageUrl}
-          alt={fighter.name}
-          data-testid={`tts-fighter-${side}`}
-          style={{
-            width: 180,
-            height: 180,
-            objectFit: "contain",
-            imageRendering: "pixelated",
-            filter: speaking
-              ? `drop-shadow(0 0 20px ${playerColor}) brightness(1.15)`
-              : `drop-shadow(0 0 8px ${playerColor}88)`,
-            transform: speaking ? "translateY(-8px) scale(1.05)" : "translateY(0px) scale(1)",
-            transition: speaking
-              ? "transform 0.12s steps(2), filter 0.15s ease"
-              : "transform 0.3s ease, filter 0.3s ease",
-            animation: speaking ? "tts-bob 0.22s steps(2) infinite" : "none",
-          }}
-        />
+      <img
+        src={fighter.imageUrl}
+        alt={fighter.name}
+        data-testid={`tts-fighter-${side}`}
+        style={{
+          width: 200,
+          height: 200,
+          objectFit: "contain",
+          imageRendering: "pixelated",
+          filter: speaking
+            ? `drop-shadow(0 0 22px ${playerColor}) brightness(1.18)`
+            : `drop-shadow(0 0 8px ${playerColor}66)`,
+          animation: speaking ? "tts-bob 0.2s steps(2) infinite" : "none",
+          transform: speaking ? "scale(1.05)" : "scale(1)",
+          transition: "transform 0.3s ease, filter 0.3s ease",
+        }}
+      />
 
-        {/* Name plate */}
-        <div style={{
-          background: "rgba(0,0,0,0.85)",
-          border: `1px solid ${playerColor}`,
-          padding: "3px 10px",
-          fontSize: 10,
+      {/* Name plate with platform badge */}
+      <div style={{
+        background: "rgba(0,0,0,0.88)",
+        border: `1px solid ${playerColor}`,
+        padding: "4px 12px",
+        marginTop: 3,
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}>
+        <span style={{
+          background: platformColor,
+          color: platformLabel === "KICK" ? "#000" : "#fff",
+          fontSize: 8,
           fontFamily: "monospace",
-          color: playerColor,
-          marginTop: 2,
-          textAlign: "center",
-          maxWidth: 180,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
+          fontWeight: "bold",
+          padding: "1px 5px",
+          borderRadius: 2,
         }}>
+          {platformLabel}
+        </span>
+        <span style={{ color: playerColor, fontSize: 10, fontFamily: "monospace" }}>
           [{playerLabel}] {fighter.name.toUpperCase()}
-        </div>
+        </span>
       </div>
 
       <style>{`
         @keyframes tts-bob {
-          0%   { transform: translateY(-8px) scale(1.05); }
-          50%  { transform: translateY(-14px) scale(1.06); }
-          100% { transform: translateY(-8px) scale(1.05); }
+          0%   { transform: scale(1.05) translateY(0px);  }
+          50%  { transform: scale(1.07) translateY(-7px); }
+          100% { transform: scale(1.05) translateY(0px);  }
         }
       `}</style>
     </div>

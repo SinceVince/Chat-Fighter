@@ -5,93 +5,108 @@ interface UseFighterSelectProps {
   columns: number;
 }
 
+// Twitch = always P1, Kick = always P2.
+// Both players navigate their own cursors independently — no turn system.
 export function useFighterSelect({ gridSize, columns }: UseFighterSelectProps) {
   const [p1Cursor, setP1Cursor] = useState(0);
   const [p2Cursor, setP2Cursor] = useState(0);
-  const [isP1Turn, setIsP1Turn] = useState(true);
   const [p1Selection, setP1Selection] = useState<{ index: number; user: string } | null>(null);
   const [p2Selection, setP2Selection] = useState<{ index: number; user: string } | null>(null);
-  const [lastAction, setLastAction] = useState<{ user: string; command: string } | null>(null);
+  const [lastP1Action, setLastP1Action] = useState<{ user: string; command: string } | null>(null);
+  const [lastP2Action, setLastP2Action] = useState<{ user: string; command: string } | null>(null);
 
-  const p1CursorRef = useRef(p1Cursor);
-  const p2CursorRef = useRef(p2Cursor);
-  const isP1TurnRef = useRef(isP1Turn);
-  const p1SelectionRef = useRef(p1Selection);
-  const p2SelectionRef = useRef(p2Selection);
-  const userCooldownRef = useRef<Map<string, number>>(new Map());
-  const COOLDOWN_MS = 5000;
+  const p1CursorRef    = useRef(0);
+  const p2CursorRef    = useRef(0);
+  const p1SelectionRef = useRef<{ index: number; user: string } | null>(null);
+  const p2SelectionRef = useRef<{ index: number; user: string } | null>(null);
+  const p1CooldownRef  = useRef<Map<string, number>>(new Map());
+  const p2CooldownRef  = useRef<Map<string, number>>(new Map());
+  const COOLDOWN_MS    = 5000;
 
-  p1CursorRef.current = p1Cursor;
-  p2CursorRef.current = p2Cursor;
-  isP1TurnRef.current = isP1Turn;
+  p1CursorRef.current    = p1Cursor;
+  p2CursorRef.current    = p2Cursor;
   p1SelectionRef.current = p1Selection;
   p2SelectionRef.current = p2Selection;
 
-  const handleCommand = (user: string, cmd: string) => {
-    const now = Date.now();
-    const lastUse = userCooldownRef.current.get(user) || 0;
-    if (now - lastUse < COOLDOWN_MS) return;
-    userCooldownRef.current.set(user, now);
-
-    const currentTurn = isP1TurnRef.current;
-    const currentCursor = currentTurn ? p1CursorRef.current : p2CursorRef.current;
-    let newIndex = currentCursor;
-    const rows = Math.ceil(gridSize / columns);
-    const currentRow = Math.floor(newIndex / columns);
-    const currentCol = newIndex % columns;
-
-    let handled = false;
+  const move = (cursor: number, cmd: string): number => {
+    const rows       = Math.ceil(gridSize / columns);
+    const currentRow = Math.floor(cursor / columns);
+    const currentCol = cursor % columns;
+    let newIndex     = cursor;
 
     if (cmd === "!up") {
-      newIndex = currentRow > 0 ? newIndex - columns : (rows - 1) * columns + currentCol;
-      handled = true;
+      newIndex = currentRow > 0 ? cursor - columns : (rows - 1) * columns + currentCol;
     } else if (cmd === "!down") {
-      newIndex = currentRow < rows - 1 ? newIndex + columns : currentCol;
-      handled = true;
+      newIndex = currentRow < rows - 1 ? cursor + columns : currentCol;
     } else if (cmd === "!left") {
-      newIndex = currentCol > 0 ? newIndex - 1 : currentRow * columns + (columns - 1);
-      handled = true;
+      newIndex = currentCol > 0 ? cursor - 1 : currentRow * columns + (columns - 1);
     } else if (cmd === "!right") {
-      newIndex = currentCol < columns - 1 ? newIndex + 1 : currentRow * columns;
-      handled = true;
-    } else if (cmd === "!select") {
-      if (currentTurn && !p1SelectionRef.current) {
-        setP1Selection({ index: currentCursor, user });
-        setIsP1Turn(false);
-        setP2Cursor(0);
-      } else if (!currentTurn && !p2SelectionRef.current) {
-        setP2Selection({ index: currentCursor, user });
-      }
-      handled = true;
+      newIndex = currentCol < columns - 1 ? cursor + 1 : currentRow * columns;
     }
 
-    if (newIndex >= gridSize) newIndex = gridSize - 1;
+    return Math.min(newIndex, gridSize - 1);
+  };
 
-    if (handled) {
-      if (currentTurn) setP1Cursor(newIndex);
-      else setP2Cursor(newIndex);
-      setLastAction({ user, command: cmd });
+  // Twitch chat → always P1
+  const handleP1Command = (user: string, cmd: string) => {
+    const now     = Date.now();
+    const lastUse = p1CooldownRef.current.get(user) || 0;
+    if (now - lastUse < COOLDOWN_MS) return;
+    p1CooldownRef.current.set(user, now);
+
+    const DIRECTIONAL = ["!up", "!down", "!left", "!right"];
+
+    if (DIRECTIONAL.includes(cmd)) {
+      if (p1SelectionRef.current) return; // already locked in
+      const next = move(p1CursorRef.current, cmd);
+      setP1Cursor(next);
+      setLastP1Action({ user, command: cmd });
+    } else if (cmd === "!select" && !p1SelectionRef.current) {
+      setP1Selection({ index: p1CursorRef.current, user });
+      setLastP1Action({ user, command: cmd });
+    }
+  };
+
+  // Kick chat → always P2
+  const handleP2Command = (user: string, cmd: string) => {
+    const now     = Date.now();
+    const lastUse = p2CooldownRef.current.get(user) || 0;
+    if (now - lastUse < COOLDOWN_MS) return;
+    p2CooldownRef.current.set(user, now);
+
+    const DIRECTIONAL = ["!up", "!down", "!left", "!right"];
+
+    if (DIRECTIONAL.includes(cmd)) {
+      if (p2SelectionRef.current) return; // already locked in
+      const next = move(p2CursorRef.current, cmd);
+      setP2Cursor(next);
+      setLastP2Action({ user, command: cmd });
+    } else if (cmd === "!select" && !p2SelectionRef.current) {
+      setP2Selection({ index: p2CursorRef.current, user });
+      setLastP2Action({ user, command: cmd });
     }
   };
 
   const reset = () => {
     setP1Cursor(0);
     setP2Cursor(0);
-    setIsP1Turn(true);
     setP1Selection(null);
     setP2Selection(null);
-    setLastAction(null);
-    userCooldownRef.current.clear();
+    setLastP1Action(null);
+    setLastP2Action(null);
+    p1CooldownRef.current.clear();
+    p2CooldownRef.current.clear();
   };
 
   return {
     p1Cursor,
     p2Cursor,
-    isP1Turn,
     p1Selection,
     p2Selection,
-    lastAction,
-    handleCommand,
+    lastP1Action,
+    lastP2Action,
+    handleP1Command,
+    handleP2Command,
     reset,
   };
 }

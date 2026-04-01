@@ -11,55 +11,42 @@ import { motion } from "framer-motion";
 import { Wifi, WifiOff, Gamepad2, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const TWITCH_LOGO = "https://brand.twitch.tv/assets/icons/svg/twitch.svg";
-const KICK_LOGO = "https://kick.com/favicon.ico";
-
 export default function SelectScreen() {
   const { data: fighters, isLoading } = useFighters();
   const [twitchInput, setTwitchInput] = useState("");
-  const [kickInput, setKickInput] = useState("");
+  const [kickInput, setKickInput]     = useState("");
 
-  const defaultTwitchChannel = import.meta.env.VITE_TWITCH_CHANNEL || "";
-  const defaultKickChannel = import.meta.env.VITE_KICK_CHANNEL || "";
+  const defaultTwitch = import.meta.env.VITE_TWITCH_CHANNEL || "";
+  const defaultKick   = import.meta.env.VITE_KICK_CHANNEL   || "";
 
-  const COLUMNS = 8;
+  const COLUMNS      = 8;
   const fightersList = fighters || [];
 
-  // Shared game state — both Twitch and Kick feed into this
+  // Shared game state — Twitch always moves P1, Kick always moves P2
   const {
     p1Cursor,
     p2Cursor,
-    isP1Turn,
     p1Selection,
     p2Selection,
-    lastAction,
-    handleCommand,
+    lastP1Action,
+    lastP2Action,
+    handleP1Command,
+    handleP2Command,
     reset,
   } = useFighterSelect({ gridSize: fightersList.length, columns: COLUMNS });
 
-  // Twitch connection (reads commands → calls handleCommand)
-  const twitch = useTwitchControls({ onCommand: handleCommand });
+  const twitch = useTwitchControls({ onCommand: handleP1Command }); // Twitch → P1
+  const kick   = useKickControls({ onCommand: handleP2Command });   // Kick   → P2
 
-  // Kick connection (reads commands → calls same handleCommand)
-  const kick = useKickControls({ onCommand: handleCommand });
-
-  // The "active channel" used for saving selections (prefer Twitch, fall back to Kick)
   const activeChannel = twitch.channel || kick.channel;
 
-  const p1Fighter = fightersList[p1Cursor];
-  const p2Fighter = fightersList[p2Cursor];
-
-  // Auto-connect on mount if env vars are set
+  // Auto-connect on mount from env vars
   useEffect(() => {
-    if (defaultTwitchChannel && !twitch.isConnected) {
-      twitch.connect(defaultTwitchChannel);
-    }
-    if (defaultKickChannel && !kick.isConnected) {
-      kick.connect(defaultKickChannel);
-    }
+    if (defaultTwitch && !twitch.isConnected) twitch.connect(defaultTwitch);
+    if (defaultKick   && !kick.isConnected)   kick.connect(defaultKick);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Save selections to DB whenever they change
+  // Save selections to DB whenever either player locks in
   useEffect(() => {
     if (!activeChannel || fightersList.length === 0) return;
     const p1FighterId = p1Selection ? fightersList[p1Selection.index]?.id : null;
@@ -75,7 +62,7 @@ export default function SelectScreen() {
 
   const handleDisconnectAll = () => {
     if (twitch.isConnected) twitch.disconnect();
-    if (kick.isConnected) kick.disconnect();
+    if (kick.isConnected)   kick.disconnect();
     reset();
   };
 
@@ -94,7 +81,7 @@ export default function SelectScreen() {
       <div className="absolute inset-0 crt-scanline z-50 pointer-events-none opacity-20" />
       <AdminPanel />
 
-      {/* Header */}
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="w-full max-w-6xl mb-6 border-b-2 border-white/10 pb-4">
         <div className="flex justify-between items-start gap-4 flex-wrap">
           <div>
@@ -104,29 +91,26 @@ export default function SelectScreen() {
             <p className="font-arcade text-xs text-muted-foreground mt-2 tracking-widest text-secondary">
               {isAnyConnected
                 ? [
-                    twitch.isConnected && `TWITCH: ${twitch.channel.toUpperCase()}`,
-                    kick.isConnected && `KICK: ${kick.channel.toUpperCase()}`,
-                  ]
-                    .filter(Boolean)
-                    .join("  •  ")
-                : "WAITING FOR CONNECTION..."}
+                    twitch.isConnected && `TWITCH→P1: ${twitch.channel.toUpperCase()}`,
+                    kick.isConnected   && `KICK→P2: ${kick.channel.toUpperCase()}`,
+                  ].filter(Boolean).join("  •  ")
+                : "CONNECT TWITCH FOR P1 · CONNECT KICK FOR P2"}
             </p>
           </div>
 
-          {/* Connection Controls */}
+          {/* Connection forms */}
           <div className="flex flex-col gap-2">
-            {/* Twitch */}
+
+            {/* Twitch = P1 */}
             {!twitch.isConnected ? (
-              <form
-                onSubmit={(e) => { e.preventDefault(); twitch.connect(twitchInput); }}
-                className="flex gap-2 items-center"
-              >
+              <form onSubmit={e => { e.preventDefault(); twitch.connect(twitchInput); }} className="flex gap-2 items-center">
                 <div className="flex items-center gap-1.5 bg-black/50 border border-[#9146FF]/50 rounded px-2 h-9">
-                  <img src={TWITCH_LOGO} alt="Twitch" className="w-4 h-4" />
+                  <span className="text-[#9146FF] font-arcade text-[9px]">P1</span>
+                  <div className="w-px h-4 bg-[#9146FF]/30" />
                   <Input
                     placeholder="Twitch channel"
                     value={twitchInput}
-                    onChange={(e) => setTwitchInput(e.target.value)}
+                    onChange={e => setTwitchInput(e.target.value)}
                     className="border-0 bg-transparent text-white font-body p-0 h-auto w-36 focus-visible:ring-0"
                     data-testid="input-twitch-channel"
                   />
@@ -138,54 +122,40 @@ export default function SelectScreen() {
             ) : (
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5 text-[#9146FF] font-arcade text-[10px]">
-                  <img src={TWITCH_LOGO} alt="Twitch" className="w-4 h-4" />
+                  <span className="text-[8px] px-1 py-0.5 bg-[#9146FF]/20 border border-[#9146FF]/40 rounded">P1</span>
                   {twitch.channel.toUpperCase()} ✓
                 </div>
-                <RetroButton
-                  onClick={() => { twitch.disconnect(); reset(); }}
-                  size="sm"
-                  variant="danger"
-                  data-testid="button-disconnect-twitch"
-                >
+                <RetroButton onClick={() => { twitch.disconnect(); reset(); }} size="sm" variant="danger" data-testid="button-disconnect-twitch">
                   <WifiOff className="w-3 h-3" />
                 </RetroButton>
               </div>
             )}
 
-            {/* Kick */}
+            {/* Kick = P2 */}
             {!kick.isConnected ? (
-              <form
-                onSubmit={(e) => { e.preventDefault(); kick.connect(kickInput); }}
-                className="flex gap-2 items-center"
-              >
+              <form onSubmit={e => { e.preventDefault(); kick.connect(kickInput); }} className="flex gap-2 items-center">
                 <div className="flex items-center gap-1.5 bg-black/50 border border-[#53FC18]/50 rounded px-2 h-9">
-                  <div className="w-4 h-4 rounded-full bg-[#53FC18] flex items-center justify-center text-black font-bold text-[8px]">K</div>
+                  <span className="text-[#53FC18] font-arcade text-[9px]">P2</span>
+                  <div className="w-px h-4 bg-[#53FC18]/30" />
                   <Input
                     placeholder="Kick channel"
                     value={kickInput}
-                    onChange={(e) => setKickInput(e.target.value)}
+                    onChange={e => setKickInput(e.target.value)}
                     className="border-0 bg-transparent text-white font-body p-0 h-auto w-36 focus-visible:ring-0"
                     data-testid="input-kick-channel"
                   />
                 </div>
-                <RetroButton type="submit" size="sm" variant="primary" data-testid="button-connect-kick"
-                  className="border-[#53FC18]/60 text-[#53FC18] hover:bg-[#53FC18]/10"
-                >
+                <RetroButton type="submit" size="sm" variant="primary" data-testid="button-connect-kick">
                   Connect <Wifi className="w-3 h-3 ml-1" />
                 </RetroButton>
               </form>
             ) : (
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5 text-[#53FC18] font-arcade text-[10px]">
-                  <div className="w-4 h-4 rounded-full bg-[#53FC18] flex items-center justify-center text-black font-bold text-[8px]">K</div>
+                  <span className="text-[8px] px-1 py-0.5 bg-[#53FC18]/20 border border-[#53FC18]/40 rounded">P2</span>
                   {kick.channel.toUpperCase()} ✓
                 </div>
-                <RetroButton
-                  onClick={kick.disconnect}
-                  size="sm"
-                  variant="danger"
-                  data-testid="button-disconnect-kick"
-                >
+                <RetroButton onClick={kick.disconnect} size="sm" variant="danger" data-testid="button-disconnect-kick">
                   <WifiOff className="w-3 h-3" />
                 </RetroButton>
               </div>
@@ -196,37 +166,25 @@ export default function SelectScreen() {
 
       <div className="w-full max-w-screen grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-screen">
 
-        {/* LEFT: P1 Stats */}
+        {/* ── LEFT: P1 (Twitch) ──────────────────────────────────────────── */}
         <div className="hidden lg:flex lg:col-span-2 flex-col justify-start space-y-2 pt-4">
           <div className={cn(
             "bg-card/60 border p-3 rounded-lg backdrop-blur-sm transition-all flex flex-col",
-            isP1Turn ? "border-primary/60" : "border-primary/20 opacity-60"
+            twitch.isConnected ? "border-[#9146FF]/60" : "border-primary/20 opacity-50"
           )}>
-            <h2 className="text-primary font-arcade text-[10px] mb-1 flex items-center gap-1">
-              <Gamepad2 className="w-3 h-3" /> P1
+            <h2 className="text-[#9146FF] font-arcade text-[10px] mb-1 flex items-center gap-1">
+              <Gamepad2 className="w-3 h-3" /> P1 — TWITCH
             </h2>
             <div className="font-display text-lg text-white uppercase tracking-wider">
-              Chat
+              {twitch.isConnected ? twitch.channel : "Not connected"}
             </div>
-            {/* Show which platforms are connected */}
-            <div className="flex gap-1 mt-1 flex-wrap">
-              {twitch.isConnected && (
-                <span className="text-[8px] font-arcade px-1 py-0.5 rounded bg-[#9146FF]/20 text-[#9146FF] border border-[#9146FF]/30">TW</span>
-              )}
-              {kick.isConnected && (
-                <span className="text-[8px] font-arcade px-1 py-0.5 rounded bg-[#53FC18]/20 text-[#53FC18] border border-[#53FC18]/30">KK</span>
-              )}
-            </div>
-            {p1Selection && fightersList[p1Selection.index] && (
-              <motion.div
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="mt-2 space-y-2"
-              >
-                <div className="p-1 bg-accent text-accent-foreground rounded text-[9px] font-arcade text-center">
-                  LOCKED IN
+
+            {p1Selection && fightersList[p1Selection.index] ? (
+              <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mt-2 space-y-2">
+                <div className="p-1 bg-[#9146FF]/30 text-white rounded text-[9px] font-arcade text-center border border-[#9146FF]/50">
+                  ✓ LOCKED IN
                 </div>
-                <div className="relative w-full h-32 rounded overflow-hidden border-2 border-primary/50">
+                <div className="relative w-full h-32 rounded overflow-hidden border-2 border-[#9146FF]/50">
                   <img
                     src={fightersList[p1Selection.index].imageUrl}
                     alt={fightersList[p1Selection.index].name}
@@ -234,39 +192,41 @@ export default function SelectScreen() {
                     data-testid="img-p1-selection"
                   />
                   <div className="absolute bottom-0 left-0 right-0 bg-black/90 px-1 py-0.5">
-                    <p className="text-[8px] font-arcade text-primary text-center truncate">
+                    <p className="text-[8px] font-arcade text-[#9146FF] text-center truncate">
                       {fightersList[p1Selection.index].name}
                     </p>
                   </div>
                 </div>
               </motion.div>
-            )}
-            {lastAction && isP1Turn && !p1Selection && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                key={lastAction.command + Date.now()}
-                className="mt-1 p-1 bg-black/60 rounded border-l border-secondary text-[9px]"
-              >
-                <div className="text-muted-foreground">{lastAction.user}</div>
-                <div className="text-secondary font-arcade">{lastAction.command}</div>
-              </motion.div>
+            ) : (
+              <>
+                <p className="text-[9px] text-muted-foreground font-arcade mt-1">
+                  {twitch.isConnected ? "Twitch chat navigating..." : "Waiting for Twitch..."}
+                </p>
+                {lastP1Action && (
+                  <motion.div
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    key={lastP1Action.command + Date.now()}
+                    className="mt-1 p-1 bg-black/60 rounded border-l border-[#9146FF] text-[9px]"
+                  >
+                    <div className="text-muted-foreground">{lastP1Action.user}</div>
+                    <div className="text-[#9146FF] font-arcade">{lastP1Action.command}</div>
+                  </motion.div>
+                )}
+              </>
             )}
           </div>
         </div>
 
-        {/* CENTER: Fighter Grid */}
+        {/* ── CENTER: Fighter Grid ────────────────────────────────────────── */}
         <div className="lg:col-span-8 flex items-center justify-center p-2">
-          <div
-            className="grid gap-2 w-full"
-            style={{ gridTemplateColumns: `repeat(${COLUMNS}, minmax(0, 1fr))` }}
-          >
+          <div className="grid gap-2 w-full" style={{ gridTemplateColumns: `repeat(${COLUMNS}, minmax(0, 1fr))` }}>
             {fightersList.map((fighter, idx) => (
               <FighterCard
                 key={fighter.id}
                 fighter={fighter}
-                isP1Active={idx === p1Cursor && isP1Turn}
-                isP2Active={idx === p2Cursor && !isP1Turn}
+                isP1Active={idx === p1Cursor && !p1Selection}
+                isP2Active={idx === p2Cursor && !p2Selection}
                 isActive={idx === p1Cursor || idx === p2Cursor}
                 isSelected={p1Selection?.index === idx || p2Selection?.index === idx}
               />
@@ -274,37 +234,25 @@ export default function SelectScreen() {
           </div>
         </div>
 
-        {/* RIGHT: P2 Stats */}
+        {/* ── RIGHT: P2 (Kick) ───────────────────────────────────────────── */}
         <div className="hidden lg:flex lg:col-span-2 flex-col justify-start space-y-2 pt-4">
           <div className={cn(
             "bg-card/60 border p-3 rounded-lg backdrop-blur-sm transition-all flex flex-col",
-            !isP1Turn ? "border-secondary/60" : "border-secondary/20 opacity-60"
+            kick.isConnected ? "border-[#53FC18]/60" : "border-secondary/20 opacity-50"
           )}>
-            <h2 className="text-secondary font-arcade text-[10px] mb-1 flex items-center gap-1">
-              <Trophy className="w-3 h-3" /> P2
+            <h2 className="text-[#53FC18] font-arcade text-[10px] mb-1 flex items-center gap-1">
+              <Trophy className="w-3 h-3" /> P2 — KICK
             </h2>
             <div className="font-display text-lg text-white uppercase tracking-wider">
-              Chat
+              {kick.isConnected ? kick.channel : "Not connected"}
             </div>
-            {/* Show which platforms are connected */}
-            <div className="flex gap-1 mt-1 flex-wrap">
-              {twitch.isConnected && (
-                <span className="text-[8px] font-arcade px-1 py-0.5 rounded bg-[#9146FF]/20 text-[#9146FF] border border-[#9146FF]/30">TW</span>
-              )}
-              {kick.isConnected && (
-                <span className="text-[8px] font-arcade px-1 py-0.5 rounded bg-[#53FC18]/20 text-[#53FC18] border border-[#53FC18]/30">KK</span>
-              )}
-            </div>
-            {p2Selection && fightersList[p2Selection.index] && (
-              <motion.div
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="mt-2 space-y-2"
-              >
-                <div className="p-1 bg-accent text-accent-foreground rounded text-[9px] font-arcade text-center">
-                  LOCKED IN
+
+            {p2Selection && fightersList[p2Selection.index] ? (
+              <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mt-2 space-y-2">
+                <div className="p-1 bg-[#53FC18]/20 text-[#53FC18] rounded text-[9px] font-arcade text-center border border-[#53FC18]/40">
+                  ✓ LOCKED IN
                 </div>
-                <div className="relative w-full h-32 rounded overflow-hidden border-2 border-secondary/50">
+                <div className="relative w-full h-32 rounded overflow-hidden border-2 border-[#53FC18]/50">
                   <img
                     src={fightersList[p2Selection.index].imageUrl}
                     alt={fightersList[p2Selection.index].name}
@@ -312,23 +260,28 @@ export default function SelectScreen() {
                     data-testid="img-p2-selection"
                   />
                   <div className="absolute bottom-0 left-0 right-0 bg-black/90 px-1 py-0.5">
-                    <p className="text-[8px] font-arcade text-secondary text-center truncate">
+                    <p className="text-[8px] font-arcade text-[#53FC18] text-center truncate">
                       {fightersList[p2Selection.index].name}
                     </p>
                   </div>
                 </div>
               </motion.div>
-            )}
-            {lastAction && !isP1Turn && !p2Selection && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                key={lastAction.command + Date.now()}
-                className="mt-1 p-1 bg-black/60 rounded border-l border-primary text-[9px]"
-              >
-                <div className="text-muted-foreground">{lastAction.user}</div>
-                <div className="text-primary font-arcade">{lastAction.command}</div>
-              </motion.div>
+            ) : (
+              <>
+                <p className="text-[9px] text-muted-foreground font-arcade mt-1">
+                  {kick.isConnected ? "Kick chat navigating..." : "Waiting for Kick..."}
+                </p>
+                {lastP2Action && (
+                  <motion.div
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    key={lastP2Action.command + Date.now()}
+                    className="mt-1 p-1 bg-black/60 rounded border-l border-[#53FC18] text-[9px]"
+                  >
+                    <div className="text-muted-foreground">{lastP2Action.user}</div>
+                    <div className="text-[#53FC18] font-arcade">{lastP2Action.command}</div>
+                  </motion.div>
+                )}
+              </>
             )}
           </div>
 
@@ -337,18 +290,13 @@ export default function SelectScreen() {
             <div>!UP / !DOWN</div>
             <div>!LEFT / !RIGHT</div>
             <div className="text-accent">!SELECT to pick</div>
-            <div className="text-xs mt-2 border-t border-white/10 pt-2">
-              {isP1Turn ? "▶ P1 choosing..." : "▶ P2 choosing..."}
+            <div className="mt-2 pt-2 border-t border-white/10 text-[8px] space-y-1">
+              <div className="text-[#9146FF]">▶ Twitch → P1</div>
+              <div className="text-[#53FC18]">▶ Kick → P2</div>
             </div>
             {isAnyConnected && (
               <div className="mt-2 pt-2 border-t border-white/10">
-                <RetroButton
-                  onClick={handleDisconnectAll}
-                  size="sm"
-                  variant="danger"
-                  className="w-full text-[8px]"
-                  data-testid="button-disconnect-all"
-                >
+                <RetroButton onClick={handleDisconnectAll} size="sm" variant="danger" className="w-full text-[8px]" data-testid="button-disconnect-all">
                   Disconnect All
                 </RetroButton>
               </div>
