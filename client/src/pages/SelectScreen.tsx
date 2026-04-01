@@ -220,7 +220,7 @@ export default function SelectScreen() {
 
         {/* ── CENTER: Fighter Grid ────────────────────────────────────────── */}
         <div className="lg:col-span-8 flex items-center justify-center p-2">
-          <div className="grid gap-x-1 gap-y-0 w-full" style={{ gridTemplateColumns: `repeat(${COLUMNS}, minmax(0, 1fr))` }}>
+          <div className="grid w-full" style={{ gridTemplateColumns: `repeat(${COLUMNS}, minmax(0, 1fr))`, columnGap: 4, rowGap: 0 }}>
             {fightersList.map((fighter, idx) => (
               <FighterCard
                 key={fighter.id}
