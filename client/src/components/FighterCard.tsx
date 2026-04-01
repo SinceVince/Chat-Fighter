@@ -1,6 +1,10 @@
 import { motion } from "framer-motion";
 import type { Fighter } from "@shared/schema";
 
+// Hand cursor images — black background removed via mix-blend-mode: screen
+const P1_HAND = "/images/cursor-p1.png";
+const P2_HAND = "/images/cursor-p2.png";
+
 interface FighterCardProps {
   fighter: Fighter;
   isActive: boolean;
@@ -10,66 +14,23 @@ interface FighterCardProps {
   onClick?: () => void;
 }
 
-// ── Smash-Bros-style gloved hand cursor ─────────────────────────────────────
-function HandCursor({ player }: { player: 1 | 2 }) {
-  const cuffColor  = player === 1 ? "#5b7fff" : "#ff4d4d";
-  const gloveLight = player === 1 ? "#d8e4ff" : "#ffe0e0";
-  const label      = player === 1 ? "P1" : "P2";
-
-  return (
-    <svg
-      width="46"
-      height="62"
-      viewBox="0 0 46 62"
-      xmlns="http://www.w3.org/2000/svg"
-      style={{ filter: `drop-shadow(0 2px 6px ${cuffColor}cc)` }}
-    >
-      {/* Cuff with P label */}
-      <rect x="5" y="0" width="36" height="15" rx="5" fill={cuffColor} />
-      <rect x="7" y="2" width="32" height="5" rx="2" fill="rgba(255,255,255,0.2)" />
-      <text x="23" y="12" textAnchor="middle" fill="white" fontFamily="monospace" fontSize="8" fontWeight="bold">
-        {label}
-      </text>
-
-      {/* Palm */}
-      <rect x="5" y="13" width="36" height="24" rx="7" fill="white" />
-      <rect x="8" y="15" width="30" height="4" rx="2" fill={gloveLight} />
-
-      {/* Curled finger bumps (3 knuckles) */}
-      <ellipse cx="12" cy="15" rx="5" ry="3.5" fill="#ececec" />
-      <ellipse cx="23" cy="14" rx="5" ry="3.5" fill="#ececec" />
-      <ellipse cx="34" cy="15" rx="5" ry="3.5" fill="#ececec" />
-
-      {/* Index finger pointing down */}
-      <rect x="18" y="33" width="10" height="27" rx="5" fill="white" />
-      <rect x="19.5" y="35" width="7" height="3" rx="1.5" fill={gloveLight} />
-
-      {/* Knuckle crease */}
-      <line x1="18" y1="45" x2="28" y2="45" stroke="#ddd" strokeWidth="1.5" strokeLinecap="round" />
-
-      {/* Finger tip highlight */}
-      <ellipse cx="23" cy="58" rx="4.5" ry="2.5" fill="#ddd" />
-    </svg>
-  );
-}
-
-// ── Fighter card — no box, just image + name ─────────────────────────────────
 export function FighterCard({ fighter, isActive, isSelected, isP1Active, isP2Active, onClick }: FighterCardProps) {
   const isHighlighted = isP1Active || isP2Active;
   const color         = isP2Active ? "#ff4d4d" : "#5b7fff";
-  const player        = isP2Active ? 2 : 1;
+  const handSrc       = isP2Active ? P2_HAND : P1_HAND;
+  const cursorId      = isP2Active ? "cursor-p2" : "cursor-p1";
 
   return (
     <div
       className="relative flex flex-col items-center"
-      style={{ paddingTop: 56 }} // room for the hand cursor above
+      style={{ paddingTop: 28 }}
       onClick={onClick}
       data-testid={`fighter-card-${fighter.id}`}
     >
-      {/* ── Hand cursor ── */}
+      {/* ── Hand cursor (Smash Bros style) ── */}
       {isHighlighted && (
         <motion.div
-          layoutId={isP2Active ? "cursor-p2" : "cursor-p1"}
+          layoutId={cursorId}
           style={{
             position: "absolute",
             top: 0,
@@ -78,13 +39,29 @@ export function FighterCard({ fighter, isActive, isSelected, isP1Active, isP2Act
             zIndex: 40,
             pointerEvents: "none",
           }}
-          transition={{ type: "spring", stiffness: 350, damping: 32 }}
+          transition={{ type: "spring", stiffness: 380, damping: 34 }}
         >
-          <HandCursor player={player} />
+          <img
+            src={handSrc}
+            alt={isP2Active ? "P2 cursor" : "P1 cursor"}
+            style={{
+              width: 52,
+              height: 52,
+              objectFit: "contain",
+              // screen blend removes black background completely
+              mixBlendMode: "screen",
+              // flip vertically so finger points down at the fighter
+              transform: "scaleY(-1)",
+              filter: isP2Active
+                ? "drop-shadow(0 0 6px #ff4d4dcc)"
+                : "drop-shadow(0 0 6px #5b7fffcc)",
+              imageRendering: "auto",
+            }}
+          />
         </motion.div>
       )}
 
-      {/* ── Fighter image ── */}
+      {/* ── Fighter image — greyscale unless cursor is on it ── */}
       <img
         src={fighter.imageUrl}
         alt={fighter.name}
@@ -97,32 +74,40 @@ export function FighterCard({ fighter, isActive, isSelected, isP1Active, isP2Act
           filter: isSelected
             ? "drop-shadow(0 0 10px gold) brightness(1.1)"
             : isHighlighted
-            ? `drop-shadow(0 0 14px ${color}) brightness(1.2)`
-            : "brightness(0.65) saturate(0.7)",
-          transform: isHighlighted ? "scale(1.15)" : isSelected ? "scale(1.08)" : "scale(1)",
+            ? `drop-shadow(0 0 16px ${color}) brightness(1.25) saturate(1.3)`
+            : "grayscale(1) brightness(0.55)",
+          transform: isHighlighted ? "scale(1.18)" : isSelected ? "scale(1.08)" : "scale(1)",
           transition: "transform 0.15s ease, filter 0.15s ease",
           zIndex: isHighlighted ? 20 : 1,
           position: "relative",
         }}
       />
 
-      {/* ── Name label ── */}
+      {/* ── Fighter name — bigger and glowing when active ── */}
       <div
         style={{
-          fontSize: 8,
+          fontSize: isHighlighted ? 13 : 11,
           fontFamily: "monospace",
+          fontWeight: isHighlighted ? "bold" : "normal",
           textAlign: "center",
-          marginTop: 2,
-          padding: "2px 4px",
+          marginTop: 3,
           maxWidth: "100%",
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
-          color: isSelected ? "gold" : isHighlighted ? color : "#666",
+          color: isSelected
+            ? "gold"
+            : isHighlighted
+            ? color
+            : "#555",
           textTransform: "uppercase",
-          letterSpacing: 1,
-          fontWeight: isHighlighted ? "bold" : "normal",
-          transition: "color 0.15s ease",
+          letterSpacing: 0.5,
+          textShadow: isHighlighted
+            ? `0 0 8px ${color}, 0 0 16px ${color}88`
+            : isSelected
+            ? "0 0 8px gold, 0 0 16px goldenrod"
+            : "none",
+          transition: "color 0.15s ease, text-shadow 0.15s ease, font-size 0.15s ease",
         }}
       >
         {fighter.name}
