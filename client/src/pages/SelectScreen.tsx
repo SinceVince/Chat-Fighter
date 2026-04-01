@@ -77,12 +77,12 @@ export default function SelectScreen() {
   const isAnyConnected = twitch.isConnected || kick.isConnected;
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-background relative overflow-hidden flex flex-col items-center justify-center px-4 pt-2 pb-4">
       <div className="absolute inset-0 crt-scanline z-50 pointer-events-none opacity-20" />
       <AdminPanel />
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="w-full max-w-6xl mb-6 border-b-2 border-white/10 pb-4">
+      <div className="w-full max-w-6xl mb-3 border-b-2 border-white/10 pb-2">
         <div className="flex justify-between items-start gap-4 flex-wrap">
           <div>
             <h1 className="text-4xl md:text-6xl font-display text-transparent bg-clip-text bg-gradient-to-r from-primary via-purple-500 to-secondary animate-pulse uppercase italic tracking-tighter drop-shadow-lg">
