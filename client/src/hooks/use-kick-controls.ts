@@ -33,25 +33,41 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
     if (!channelName) return;
     cleanup();
 
-    // Step 1: Fetch the Kick chatroom ID via our backend proxy (avoids CORS issues)
-    let chatroomId: number;
-    try {
-      const res = await fetch(`/api/kick-channel/${encodeURIComponent(channelName.toLowerCase())}`);
-      if (!res.ok) {
-        toast({
-          variant: "destructive",
-          title: "Kick Channel Not Found",
-          description: `Could not find Kick channel: ${channelName}`,
-        });
-        return;
-      }
-      const data = await res.json();
-      chatroomId = data.chatroomId;
-    } catch {
+    const slug = channelName.toLowerCase().trim();
+
+    // Step 1: Resolve chatroom ID — try directly from the browser first (avoids
+    // Cloudflare blocking server-side requests), then fall back to our proxy.
+    let chatroomId: number | null = null;
+
+    // 1a. Direct browser fetch — Kick allows CORS from browsers
+    for (const url of [
+      `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
+      `https://kick.com/api/v1/channels/${encodeURIComponent(slug)}`,
+    ]) {
+      try {
+        const r = await fetch(url, { headers: { Accept: "application/json" } });
+        if (!r.ok) continue;
+        const d = await r.json();
+        if (d?.chatroom?.id) { chatroomId = d.chatroom.id; break; }
+      } catch { /* cors / network error — try next */ }
+    }
+
+    // 1b. Server-side proxy fallback
+    if (!chatroomId) {
+      try {
+        const res = await fetch(`/api/kick-channel/${encodeURIComponent(slug)}`);
+        if (res.ok) {
+          const data = await res.json();
+          chatroomId = data.chatroomId ?? null;
+        }
+      } catch { /* ignore */ }
+    }
+
+    if (!chatroomId) {
       toast({
         variant: "destructive",
-        title: "Kick Connection Failed",
-        description: "Could not look up Kick channel info.",
+        title: "Kick Channel Not Found",
+        description: `Could not find Kick channel "${channelName}". Check the channel name and try again.`,
       });
       return;
     }
@@ -80,11 +96,11 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
 
         // Confirm subscription
         if (msg.event === "pusher_internal:subscription_succeeded") {
-          setChannel(channelName);
+          setChannel(slug);
           setIsConnected(true);
           toast({
             title: "Connected to Kick",
-            description: `Listening to kick.com/${channelName}`,
+            description: `Listening to kick.com/${slug}`,
           });
           // Keep-alive ping every 30s
           pingRef.current = setInterval(() => {

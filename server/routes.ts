@@ -81,7 +81,7 @@ export async function registerRoutes(
   // Selection endpoints for TTS bot integration
   app.post("/api/selections/:channel", async (req, res) => {
     try {
-      const { channel } = req.params;
+      const channel = req.params.channel.toLowerCase();
       const { p1FighterId, p2FighterId } = req.body;
       const selection = await storage.saveSelection(
         channel,
@@ -96,7 +96,7 @@ export async function registerRoutes(
 
   app.get("/api/selections/:channel", async (req, res) => {
     try {
-      const { channel } = req.params;
+      const channel = req.params.channel.toLowerCase();
       const selection = await storage.getSelection(channel);
       if (!selection) {
         return res.status(404).json({ message: "No selection found for channel" });

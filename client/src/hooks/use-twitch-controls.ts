@@ -22,7 +22,8 @@ export function useTwitchControls({ onCommand }: UseTwitchControlsProps) {
     if (!channelName) return;
     if (client) await client.disconnect().catch(() => {});
 
-    const newClient = new tmi.Client({ channels: [channelName] });
+    const slug = channelName.toLowerCase().trim();
+    const newClient = new tmi.Client({ channels: [slug] });
 
     newClient.on("message", (_ch, tags, message, self) => {
       if (self) return;
@@ -34,7 +35,7 @@ export function useTwitchControls({ onCommand }: UseTwitchControlsProps) {
     try {
       await newClient.connect();
       setClient(newClient);
-      setChannel(channelName);
+      setChannel(slug);
       setIsConnected(true);
       toast({
         title: "Connected to Twitch",
