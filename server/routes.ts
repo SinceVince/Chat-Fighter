@@ -36,23 +36,37 @@ export async function registerRoutes(
 
   // Kick channel proxy — avoids CORS issues when looking up chatroom IDs from the browser
   app.get("/api/kick-channel/:channelname", async (req, res) => {
-    try {
-      const response = await fetch(
-        `https://kick.com/api/v1/channels/${encodeURIComponent(req.params.channelname)}`,
-        { headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" } }
-      );
-      if (!response.ok) {
-        return res.status(404).json({ message: "Kick channel not found" });
+    const slug = req.params.channelname.toLowerCase();
+    const browserHeaders = {
+      "Accept": "application/json, text/plain, */*",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Accept-Encoding": "gzip, deflate, br",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+      "Referer": "https://kick.com/",
+      "Origin": "https://kick.com",
+      "Cache-Control": "no-cache",
+    };
+
+    // Try v2 first, then v1 as fallback
+    const endpoints = [
+      `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
+      `https://kick.com/api/v1/channels/${encodeURIComponent(slug)}`,
+    ];
+
+    for (const url of endpoints) {
+      try {
+        const response = await fetch(url, { headers: browserHeaders });
+        if (!response.ok) continue;
+        const data: any = await response.json();
+        const chatroomId = data?.chatroom?.id;
+        if (!chatroomId) continue;
+        return res.json({ chatroomId, channelName: data?.slug || slug });
+      } catch {
+        continue;
       }
-      const data: any = await response.json();
-      const chatroomId = data?.chatroom?.id;
-      if (!chatroomId) {
-        return res.status(404).json({ message: "Could not find chatroom ID for this channel" });
-      }
-      res.json({ chatroomId, channelName: data?.slug || req.params.channelname });
-    } catch (err) {
-      res.status(500).json({ message: "Failed to fetch Kick channel info" });
     }
+
+    res.status(404).json({ message: "Kick channel not found. Make sure the channel name is correct." });
   });
 
   // CORS middleware for public selection endpoints (needed for StreamElements widget)
