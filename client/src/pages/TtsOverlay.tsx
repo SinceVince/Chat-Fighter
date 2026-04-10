@@ -15,8 +15,6 @@ interface Selection {
 
 type SpeechJob = { text: string; player: 1 | 2 };
 
-// ── Derive mouth-frame URLs from the base fighter image URL ──────────────────
-// Convention: /images/ashcoat.png → /images/ashcoatclose.png & /images/ashcoatopen.png
 function getMouthUrls(imageUrl: string) {
   const base = imageUrl.replace(/\.(png|jpg|jpeg|gif|webp)$/i, "");
   return {
@@ -25,7 +23,6 @@ function getMouthUrls(imageUrl: string) {
   };
 }
 
-// ── Preload an image, returns whether it loaded successfully ─────────────────
 function checkImageExists(url: string): Promise<boolean> {
   return new Promise(resolve => {
     const img   = new Image();
@@ -35,7 +32,6 @@ function checkImageExists(url: string): Promise<boolean> {
   });
 }
 
-// ── Hook: resolves which mouth frames exist for a given fighter ──────────────
 function useMouthFrames(fighter: Fighter | undefined) {
   const [closedUrl, setClosedUrl] = useState<string | null>(null);
   const [openUrl,   setOpenUrl]   = useState<string | null>(null);
@@ -57,8 +53,6 @@ function useMouthFrames(fighter: Fighter | undefined) {
   return { closedUrl, openUrl };
 }
 
-// ── Twitch = P1 voice  |  Kick = P2 voice ───────────────────────────────────
-// Commands: !tts <text>  |  !say <text>
 export default function TtsOverlay() {
   const params    = new URLSearchParams(window.location.search);
   const urlTwitch = params.get("channel") || params.get("twitch") || "";
@@ -81,18 +75,14 @@ export default function TtsOverlay() {
   const p1 = selection.p1Fighter;
   const p2 = selection.p2Fighter;
 
-  // Resolve mouth frames for each fighter
   const { closedUrl: p1Closed, openUrl: p1Open } = useMouthFrames(p1);
   const { closedUrl: p2Closed, openUrl: p2Open } = useMouthFrames(p2);
 
-  // Current displayed image for each fighter (switches on speaking)
   const p1ImgSrc = p1Speaking && p1Open ? p1Open : p1Closed ?? p1?.imageUrl;
   const p2ImgSrc = p2Speaking && p2Open ? p2Open : p2Closed ?? p2?.imageUrl;
 
-  // ── Poll API for current fighter selections ──────────────────────────────
   const pollSelection = useCallback(async (ch: string) => {
     try {
-      // Try channel-specific first, fall back to latest
       if (ch) {
         const res = await fetch(`/api/selections/${encodeURIComponent(ch)}`);
         if (res.ok) {
@@ -103,7 +93,6 @@ export default function TtsOverlay() {
           }
         }
       }
-      // Fallback: use the most recently updated selection
       const res2 = await fetch(`/api/selections/latest`);
       if (res2.ok) setSelection(await res2.json());
     } catch { /* silent */ }
@@ -117,7 +106,11 @@ export default function TtsOverlay() {
     return () => clearInterval(interval);
   }, [pollSelection]);
 
-  // ── TTS engine ────────────────────────────────────────────────────────────
+  // Poll immediately on mount
+  useEffect(() => {
+    pollSelection("");
+  }, [pollSelection]);
+
   const processQueue = useCallback(() => {
     if (isSpeakingRef.current || speechQueueRef.current.length === 0) return;
 
@@ -163,7 +156,6 @@ export default function TtsOverlay() {
     processQueue();
   }, [processQueue]);
 
-  // ── Twitch → P1, Kick → P2 ──────────────────────────────────────────────
   const handleTwitchMessage = useCallback((_user: string, msg: string) => {
     const lower    = msg.trim().toLowerCase();
     const prefixes = ["!tts ", "!say ", "!p1 "];
@@ -206,11 +198,6 @@ export default function TtsOverlay() {
     else if (import.meta.env.VITE_KICK_CHANNEL) kick.connect(import.meta.env.VITE_KICK_CHANNEL);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Poll immediately on mount using latest endpoint
-  useEffect(() => {
-    pollSelection("");
-  }, [pollSelection]);
-
   const handleConnect = (e: React.FormEvent) => {
     e.preventDefault();
     if (twitchInput) twitch.connect(twitchInput);
@@ -218,12 +205,9 @@ export default function TtsOverlay() {
     setShowSetup(false);
   };
 
-  const isConnected = twitch.isConnected || kick.isConnected;
-
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative", overflow: "hidden", background: "transparent" }}>
 
-      {/* ── Setup panel ─────────────────────────────────────────────────── */}
       {showSetup && (
         <div style={{
           position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
@@ -231,7 +215,7 @@ export default function TtsOverlay() {
           padding: "28px 36px", minWidth: 360, fontFamily: "monospace",
         }}>
           <p style={{ color: "#ffdd00", fontSize: 13, marginBottom: 6, fontWeight: "bold", textAlign: "center" }}>
-            🎮 FIGHTER TTS BOTS — SETUP
+            FIGHTER TTS BOTS — SETUP
           </p>
           <p style={{ color: "#888", fontSize: 10, textAlign: "center", marginBottom: 18 }}>
             Twitch chat → P1 fighter speaks · Kick chat → P2 fighter speaks
@@ -265,7 +249,6 @@ export default function TtsOverlay() {
         </div>
       )}
 
-      {/* ── Settings gear ───────────────────────────────────────────────── */}
       {!showSetup && (
         <button onClick={() => setShowSetup(true)}
           style={{
@@ -276,7 +259,6 @@ export default function TtsOverlay() {
           data-testid="tts-button-settings" title="Settings">⚙</button>
       )}
 
-      {/* ── Connection badges ────────────────────────────────────────────── */}
       {!showSetup && (
         <div style={{ position: "absolute", top: 8, left: 8, display: "flex", gap: 6, zIndex: 50 }}>
           {twitch.isConnected
@@ -290,7 +272,6 @@ export default function TtsOverlay() {
         </div>
       )}
 
-      {/* ── Waiting ──────────────────────────────────────────────────────── */}
       {!p1 && !p2 && (
         <div style={{
           position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)",
@@ -301,7 +282,6 @@ export default function TtsOverlay() {
         </div>
       )}
 
-      {/* ── P1 Fighter — bottom left (Twitch) ───────────────────────────── */}
       {p1 && (
         <FighterBot
           fighter={p1}
@@ -317,7 +297,6 @@ export default function TtsOverlay() {
         />
       )}
 
-      {/* ── P2 Fighter — bottom right (Kick) ────────────────────────────── */}
       {p2 && (
         <FighterBot
           fighter={p2}
@@ -336,7 +315,6 @@ export default function TtsOverlay() {
   );
 }
 
-// ── Individual fighter TTS bot ────────────────────────────────────────────────
 interface FighterBotProps {
   fighter: Fighter;
   imgSrc: string | null | undefined;
@@ -362,8 +340,6 @@ function FighterBot({ fighter, imgSrc, side, speaking, speechText, playerLabel, 
       flexDirection: "column",
       alignItems: isLeft ? "flex-start" : "flex-end",
     }}>
-
-      {/* Speech bubble */}
       <div style={{
         maxWidth: 300,
         background: "rgba(0,0,0,0.90)",
@@ -392,7 +368,6 @@ function FighterBot({ fighter, imgSrc, side, speaking, speechText, playerLabel, 
         }} />
       </div>
 
-      {/* Fighter image — swaps between closed/open mouth frames */}
       <img
         src={imgSrc || fighter.imageUrl}
         alt={fighter.name}
@@ -410,7 +385,6 @@ function FighterBot({ fighter, imgSrc, side, speaking, speechText, playerLabel, 
         }}
       />
 
-      {/* Name plate */}
       <div style={{
         background: "rgba(0,0,0,0.88)",
         border: `1px solid ${playerColor}`,
