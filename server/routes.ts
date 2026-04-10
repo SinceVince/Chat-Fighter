@@ -47,19 +47,24 @@ export async function registerRoutes(
       "Cache-Control": "no-cache",
     };
 
-    // Scrape the channel page HTML to extract chatroom ID
-    // (Kick's JSON API is Cloudflare-protected and blocks server-side requests)
     try {
-      const response = await fetch(`https://kick.com/${slug}`, {
-        headers: browserHeaders,
-        redirect: "follow",
-      });
-      if (response.ok) {
-        const html = await response.text();
-        const match = html.match(/"chatroom"\s*:\s*\{[^}]*"id"\s*:\s*(\d+)/);
-        if (match) {
-          return res.json({ chatroomId: Number(match[1]), channelName: slug });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      try {
+        const response = await fetch(`https://kick.com/${slug}`, {
+          headers: browserHeaders,
+          redirect: "follow",
+          signal: controller.signal,
+        });
+        if (response.ok) {
+          const html = await response.text();
+          const match = html.match(/"chatroom"\s*:\s*\{[^}]*"id"\s*:\s*(\d+)/);
+          if (match) {
+            return res.json({ chatroomId: Number(match[1]), channelName: slug });
+          }
         }
+      } finally {
+        clearTimeout(timeoutId);
       }
     } catch { /* fall through */ }
 
