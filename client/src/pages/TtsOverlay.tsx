@@ -91,17 +91,28 @@ export default function TtsOverlay() {
 
   // ── Poll API for current fighter selections ──────────────────────────────
   const pollSelection = useCallback(async (ch: string) => {
-    if (!ch) return;
     try {
-      const res = await fetch(`/api/selections/${encodeURIComponent(ch)}`);
-      if (!res.ok) return;
-      setSelection(await res.json());
+      // Try channel-specific first, fall back to latest
+      if (ch) {
+        const res = await fetch(`/api/selections/${encodeURIComponent(ch)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.p1Fighter || data.p2Fighter) {
+            setSelection(data);
+            return;
+          }
+        }
+      }
+      // Fallback: use the most recently updated selection
+      const res2 = await fetch(`/api/selections/latest`);
+      if (res2.ok) setSelection(await res2.json());
     } catch { /* silent */ }
   }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
       if (pollChannelRef.current) pollSelection(pollChannelRef.current);
+      else pollSelection("");
     }, 3000);
     return () => clearInterval(interval);
   }, [pollSelection]);
@@ -195,6 +206,11 @@ export default function TtsOverlay() {
     else if (import.meta.env.VITE_KICK_CHANNEL) kick.connect(import.meta.env.VITE_KICK_CHANNEL);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Poll immediately on mount using latest endpoint
+  useEffect(() => {
+    pollSelection("");
+  }, [pollSelection]);
+
   const handleConnect = (e: React.FormEvent) => {
     e.preventDefault();
     if (twitchInput) twitch.connect(twitchInput);
@@ -275,7 +291,7 @@ export default function TtsOverlay() {
       )}
 
       {/* ── Waiting ──────────────────────────────────────────────────────── */}
-      {isConnected && !p1 && !p2 && (
+      {!p1 && !p2 && (
         <div style={{
           position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)",
           background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.15)",
@@ -389,7 +405,6 @@ function FighterBot({ fighter, imgSrc, side, speaking, speechText, playerLabel, 
           filter: speaking
             ? `drop-shadow(0 0 22px ${playerColor}) brightness(1.18)`
             : `drop-shadow(0 0 8px ${playerColor}66)`,
-          // No bounce animation — the mouth open/close IS the animation
           transform: speaking ? "scale(1.04)" : "scale(1)",
           transition: "transform 0.2s ease, filter 0.2s ease",
         }}
