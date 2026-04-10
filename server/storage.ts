@@ -9,7 +9,7 @@ import {
   type InsertSelection,
   type SelectionResponse,
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 
 export interface IStorage {
   getFighters(): Promise<FighterResponse[]>;
@@ -17,6 +17,7 @@ export interface IStorage {
   deleteFighter(id: number): Promise<void>;
   saveSelection(channel: string, p1FighterId: number | null, p2FighterId: number | null): Promise<SelectionResponse>;
   getSelection(channel: string): Promise<SelectionResponse | null>;
+  getLatestSelection(): Promise<SelectionResponse | null>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -63,6 +64,17 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(streamSelections)
       .where(eq(streamSelections.channel, channel));
+
+    if (result.length === 0) return null;
+    return await this.enrichSelection(result[0]);
+  }
+
+  async getLatestSelection(): Promise<SelectionResponse | null> {
+    const result = await db
+      .select()
+      .from(streamSelections)
+      .orderBy(desc(streamSelections.updatedAt))
+      .limit(1);
 
     if (result.length === 0) return null;
     return await this.enrichSelection(result[0]);
