@@ -34,7 +34,7 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
-  // Kick channel proxy — avoids CORS issues when looking up chatroom IDs from the browser
+  // Kick channel proxy
   app.get("/api/kick-channel/:channelname", async (req, res) => {
     const slug = req.params.channelname.toLowerCase();
     const browserHeaders = {
@@ -71,7 +71,7 @@ export async function registerRoutes(
     res.status(404).json({ message: "Kick channel not found. Make sure the channel name is correct." });
   });
 
-  // CORS middleware for public selection endpoints (needed for StreamElements widget)
+  // CORS middleware for selection endpoints
   app.use("/api/selections", (req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -80,7 +80,19 @@ export async function registerRoutes(
     next();
   });
 
-  // Selection endpoints for TTS bot integration
+  // Latest selection — MUST be before /:channel to avoid being swallowed by it
+  app.get("/api/selections/latest", async (req, res) => {
+    try {
+      const selection = await storage.getLatestSelection();
+      if (!selection) {
+        return res.status(404).json({ message: "No selections yet" });
+      }
+      res.json(selection);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch latest selection" });
+    }
+  });
+
   app.post("/api/selections/:channel", async (req, res) => {
     try {
       const channel = req.params.channel.toLowerCase();
@@ -174,18 +186,6 @@ export async function registerRoutes(
       await storage.createFighter(f);
     }
   }
-  // Always return the most recently updated selection (for TTS overlay)
-  app.get("/api/selections/latest", async (req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    try {
-      const selection = await storage.getLatestSelection();
-      if (!selection) {
-        return res.status(404).json({ message: "No selections yet" });
-      }
-      res.json(selection);
-    } catch (err) {
-      res.status(500).json({ message: "Failed to fetch latest selection" });
-    }
-  });
+
   return httpServer;
 }
