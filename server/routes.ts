@@ -47,27 +47,23 @@ export async function registerRoutes(
       "Cache-Control": "no-cache",
     };
 
-    // Try v2 first, then v1 as fallback
-    const endpoints = [
-      `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
-      `https://kick.com/api/v1/channels/${encodeURIComponent(slug)}`,
-    ];
-
-    for (const url of endpoints) {
-      try {
-        const response = await fetch(url, { headers: browserHeaders });
-        if (!response.ok) continue;
-        const data: any = await response.json();
-        const chatroomId = data?.chatroom?.id;
-        if (!chatroomId) continue;
-        return res.json({ chatroomId, channelName: data?.slug || slug });
-      } catch {
-        continue;
+    // Scrape the channel page HTML to extract chatroom ID
+    // (Kick's JSON API is Cloudflare-protected and blocks server-side requests)
+    try {
+      const response = await fetch(`https://kick.com/${slug}`, {
+        headers: browserHeaders,
+        redirect: "follow",
+      });
+      if (response.ok) {
+        const html = await response.text();
+        const match = html.match(/"chatroom"\s*:\s*\{[^}]*"id"\s*:\s*(\d+)/);
+        if (match) {
+          return res.json({ chatroomId: Number(match[1]), channelName: slug });
+        }
       }
-    }
+    } catch { /* fall through */ }
 
     res.status(404).json({ message: "Kick channel not found. Make sure the channel name is correct." });
-  });
 
   // CORS middleware for public selection endpoints (needed for StreamElements widget)
   app.use("/api/selections", (req, res, next) => {
