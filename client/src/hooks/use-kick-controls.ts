@@ -35,45 +35,45 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
     if (!channelName) return;
     cleanup();
     
-    let chatroomId: number | null = null;
-    
     const slug = channelName.toLowerCase().trim();
 
     // If a numeric chatroom ID was entered directly, skip the lookup
-    if (/^\d+$/.test(slug)) {
-      chatroomId = Number(slug);
-    }
 
     // Step 1: Resolve chatroom ID — try directly from the browser first (avoids
     // Cloudflare blocking server-side requests), then fall back to our proxy.
 
-    // 1a. Direct browser fetch — Kick allows CORS from browsers
-    for (const url of [
-      `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
-      `https://kick.com/api/v1/channels/${encodeURIComponent(slug)}`,
-    ]) {
-      try {
-        const r = await fetch(url, { headers: { Accept: "application/json" } });
-        if (!r.ok) continue;
-        const d = await r.json();
-        if (d?.chatroom?.id) { chatroomId = d.chatroom.id; break; }
-      } catch { /* cors / network error — try next */ }
-    }
+        let chatroomId: number | null = null;
 
-    // 1b. Server-side proxy fallback
-    if (!chatroomId) {
-      try {
-        const res = await fetch(`/api/kick-channel/${encodeURIComponent(slug)}`, {
-          signal: AbortSignal.timeout(8000),
-        });
-        });
-        if (res.ok) {
-          const data = await res.json();
-          chatroomId = data.chatroomId ?? null;
-        }
-      } catch { /* ignore */ }
-    }
+    if (/^\d+$/.test(slug)) {
+      // User entered a numeric chatroom ID directly — skip lookup
+      chatroomId = Number(slug);
+    } else {
+      // 1a. Direct browser fetch
+      for (const url of [
+        `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
+        `https://kick.com/api/v1/channels/${encodeURIComponent(slug)}`,
+      ]) {
+        try {
+          const r = await fetch(url, { headers: { Accept: "application/json" } });
+          if (!r.ok) continue;
+          const d = await r.json();
+          if (d?.chatroom?.id) { chatroomId = d.chatroom.id; break; }
+        } catch { /* cors / network error — try next */ }
+      }
 
+      // 1b. Server-side proxy fallback
+      if (!chatroomId) {
+        try {
+          const res = await fetch(`/api/kick-channel/${encodeURIComponent(slug)}`, {
+            signal: AbortSignal.timeout(8000),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            chatroomId = data.chatroomId ?? null;
+          }
+        } catch { /* ignore */ }
+      }
+    }
     if (!chatroomId) {
       toast({
         variant: "destructive",
