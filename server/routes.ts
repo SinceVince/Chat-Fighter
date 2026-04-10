@@ -80,19 +80,6 @@ export async function registerRoutes(
     next();
   });
 
-  // Latest selection — MUST be before /:channel to avoid being swallowed by it
-  app.get("/api/selections/latest", async (req, res) => {
-    try {
-      const selection = await storage.getLatestSelection();
-      if (!selection) {
-        return res.status(404).json({ message: "No selections yet" });
-      }
-      res.json(selection);
-    } catch (err) {
-      res.status(500).json({ message: "Failed to fetch latest selection" });
-    }
-  });
-
   app.post("/api/selections/:channel", async (req, res) => {
     try {
       const channel = req.params.channel.toLowerCase();
@@ -107,6 +94,20 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to save selection" });
     }
   });
+
+    // Latest selection — MUST be before /:channel to avoid being swallowed by it
+  app.get("/api/selections/latest", async (req, res) => {
+    try {
+      const selection = await storage.getLatestSelection();
+      if (!selection) {
+        return res.status(404).json({ message: "No selections yet" });
+      }
+      res.json(selection);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch latest selection" });
+    }
+  });
+
 
   app.get("/api/selections/:channel", async (req, res) => {
     try {
