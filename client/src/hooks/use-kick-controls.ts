@@ -96,7 +96,17 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
           ws.send(JSON.stringify({ event: "pusher:pong", data: {} }));
           return;
         }
-
+        // Handle subscription failure
+        if (msg.event === "pusher_internal:subscription_error") {
+          setIsConnected(false);
+          toast({
+            variant: "destructive",
+            title: "Kick Subscription Failed",
+            description: `Could not subscribe to channel. Check the channel name is correct.`,
+          });
+          ws.close();
+          return;
+        }
         // Confirm subscription
         if (msg.event === "pusher_internal:subscription_succeeded") {
           setChannel(slug);
@@ -136,8 +146,15 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
       });
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       setIsConnected(false);
+      if (!event.wasClean && event.code !== 1000) {
+        toast({
+          variant: "destructive",
+          title: "Kick Disconnected",
+          description: `Connection closed (code ${event.code}). Try reconnecting.`,
+        });
+      }
     };
   };
 
