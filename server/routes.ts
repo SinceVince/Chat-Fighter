@@ -69,6 +69,7 @@ export async function registerRoutes(
     } catch { /* fall through */ }
 
     res.status(404).json({ message: "Kick channel not found. Make sure the channel name is correct." });
+  });
 
   // CORS middleware for public selection endpoints (needed for StreamElements widget)
   app.use("/api/selections", (req, res, next) => {
@@ -111,7 +112,6 @@ export async function registerRoutes(
   // Seed data if empty
   const existing = await storage.getFighters();
   if (existing.length === 0 || existing.some(f => f.imageUrl.includes('discordapp'))) {
-    // Clear existing if they have broken discord links
     if (existing.length > 0) {
       for (const f of existing) {
         await storage.deleteFighter(f.id);
