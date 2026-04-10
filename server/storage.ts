@@ -9,7 +9,7 @@ import {
   type InsertSelection,
   type SelectionResponse,
 } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
   getFighters(): Promise<FighterResponse[]>;
@@ -70,14 +70,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getLatestSelection(): Promise<SelectionResponse | null> {
-    const result = await db
-      .select()
-      .from(streamSelections)
-      .orderBy(desc(streamSelections.updatedAt))
-      .limit(1);
+    const results = await db.select().from(streamSelections);
+    if (results.length === 0) return null;
 
-    if (result.length === 0) return null;
-    return await this.enrichSelection(result[0]);
+    // Sort by updatedAt descending in JavaScript to avoid drizzle version issues
+    results.sort((a, b) => {
+      const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+      const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    return await this.enrichSelection(results[0]);
   }
 
   private async enrichSelection(selection: StreamSelection): Promise<SelectionResponse> {
@@ -85,19 +88,19 @@ export class DatabaseStorage implements IStorage {
     let p2Fighter: Fighter | undefined;
 
     if (selection.p1FighterId) {
-      const fighters_result = await db
+      const result = await db
         .select()
         .from(fighters)
         .where(eq(fighters.id, selection.p1FighterId));
-      p1Fighter = fighters_result[0];
+      p1Fighter = result[0];
     }
 
     if (selection.p2FighterId) {
-      const fighters_result = await db
+      const result = await db
         .select()
         .from(fighters)
         .where(eq(fighters.id, selection.p2FighterId));
-      p2Fighter = fighters_result[0];
+      p2Fighter = result[0];
     }
 
     return { ...selection, p1Fighter, p2Fighter };
