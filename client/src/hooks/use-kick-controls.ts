@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 
-// Kick uses Pusher under the hood. We connect via raw WebSocket to the Pusher endpoint.
 const PUSHER_URL = "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0&flash=false";
 
 interface UseKickControlsProps {
@@ -34,15 +33,9 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
   const connect = async (channelName: string) => {
     if (!channelName) return;
     cleanup();
-    
+
     const slug = channelName.toLowerCase().trim();
-
-    // If a numeric chatroom ID was entered directly, skip the lookup
-
-    // Step 1: Resolve chatroom ID — try directly from the browser first (avoids
-    // Cloudflare blocking server-side requests), then fall back to our proxy.
-
-        let chatroomId: number | null = null;
+    let chatroomId: number | null = null;
 
     if (/^\d+$/.test(slug)) {
       // User entered a numeric chatroom ID directly — skip lookup
@@ -74,6 +67,7 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
         } catch { /* ignore */ }
       }
     }
+
     if (!chatroomId) {
       toast({
         variant: "destructive",
@@ -83,12 +77,11 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
       return;
     }
 
-    // Step 2: Connect to Pusher WebSocket
+    // Connect to Pusher WebSocket
     const ws = new WebSocket(PUSHER_URL);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      // Subscribe to the chatroom channel
       ws.send(JSON.stringify({
         event: "pusher:subscribe",
         data: { auth: "", channel: `chatrooms.${chatroomId}.v2` },
@@ -99,23 +92,22 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
       try {
         const msg = JSON.parse(event.data);
 
-        // Respond to Pusher pings
         if (msg.event === "pusher:ping") {
           ws.send(JSON.stringify({ event: "pusher:pong", data: {} }));
           return;
         }
-        // Handle subscription failure
+
         if (msg.event === "pusher_internal:subscription_error") {
           setIsConnected(false);
           toast({
             variant: "destructive",
             title: "Kick Subscription Failed",
-            description: `Could not subscribe to channel. Check the channel name is correct.`,
+            description: `Could not subscribe to chatroom ${chatroomId}. Check the ID is correct.`,
           });
           ws.close();
           return;
         }
-        // Confirm subscription
+
         if (msg.event === "pusher_internal:subscription_succeeded") {
           setChannel(slug);
           setIsConnected(true);
@@ -123,7 +115,6 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
             title: "Connected to Kick",
             description: `Listening to kick.com/${slug}`,
           });
-          // Keep-alive ping every 30s
           pingRef.current = setInterval(() => {
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ event: "pusher:ping", data: {} }));
@@ -132,7 +123,6 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
           return;
         }
 
-        // Handle incoming chat messages
         if (msg.event === "App\\Events\\ChatMessageEvent") {
           const payload = typeof msg.data === "string" ? JSON.parse(msg.data) : msg.data;
           const content: string = payload?.content || "";
