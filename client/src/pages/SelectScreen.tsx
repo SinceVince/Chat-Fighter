@@ -138,7 +138,7 @@ export default function SelectScreen() {
                   <span className="text-[#53FC18] font-arcade text-[9px]">P2</span>
                   <div className="w-px h-4 bg-[#53FC18]/30" />
                   <Input
-                    placeholder="Kick channel"
+                    placeholder="channel name or chatroom ID"
                     value={kickInput}
                     onChange={e => setKickInput(e.target.value)}
                     className="border-0 bg-transparent text-white font-body p-0 h-auto w-36 focus-visible:ring-0"
