@@ -34,7 +34,6 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
-  // Kick channel proxy
   app.get("/api/kick-channel/:channelname", async (req, res) => {
     const slug = req.params.channelname.toLowerCase();
     const browserHeaders = {
@@ -71,7 +70,6 @@ export async function registerRoutes(
     res.status(404).json({ message: "Kick channel not found. Make sure the channel name is correct." });
   });
 
-  // CORS middleware for selection endpoints
   app.use("/api/selections", (req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -95,7 +93,7 @@ export async function registerRoutes(
     }
   });
 
-    // Latest selection — MUST be before /:channel to avoid being swallowed by it
+  // MUST be before /:channel to prevent "latest" being treated as a channel name
   app.get("/api/selections/latest", async (req, res) => {
     try {
       const selection = await storage.getLatestSelection();
@@ -107,7 +105,6 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to fetch latest selection" });
     }
   });
-
 
   app.get("/api/selections/:channel", async (req, res) => {
     try {
@@ -122,7 +119,6 @@ export async function registerRoutes(
     }
   });
 
-  // Seed data if empty
   const existing = await storage.getFighters();
   if (existing.length === 0 || existing.some(f => f.imageUrl.includes('discordapp'))) {
     if (existing.length > 0) {
