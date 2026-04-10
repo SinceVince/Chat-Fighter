@@ -55,7 +55,10 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
     // 1b. Server-side proxy fallback
     if (!chatroomId) {
       try {
-        const res = await fetch(`/api/kick-channel/${encodeURIComponent(slug)}`);
+        const res = await fetch(`/api/kick-channel/${encodeURIComponent(slug)}`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        });
         if (res.ok) {
           const data = await res.json();
           chatroomId = data.chatroomId ?? null;
