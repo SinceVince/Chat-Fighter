@@ -174,6 +174,18 @@ export async function registerRoutes(
       await storage.createFighter(f);
     }
   }
-
+  // Always return the most recently updated selection (for TTS overlay)
+  app.get("/api/selections/latest", async (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    try {
+      const selection = await storage.getLatestSelection();
+      if (!selection) {
+        return res.status(404).json({ message: "No selections yet" });
+      }
+      res.json(selection);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch latest selection" });
+    }
+  });
   return httpServer;
 }
