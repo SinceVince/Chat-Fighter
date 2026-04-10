@@ -34,7 +34,9 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
   const connect = async (channelName: string) => {
     if (!channelName) return;
     cleanup();
+    
     let chatroomId: number | null = null;
+    
     const slug = channelName.toLowerCase().trim();
 
     // If a numeric chatroom ID was entered directly, skip the lookup
@@ -44,7 +46,6 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
 
     // Step 1: Resolve chatroom ID — try directly from the browser first (avoids
     // Cloudflare blocking server-side requests), then fall back to our proxy.
-    let chatroomId: number | null = null;
 
     // 1a. Direct browser fetch — Kick allows CORS from browsers
     for (const url of [
