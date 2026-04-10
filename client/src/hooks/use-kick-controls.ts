@@ -24,6 +24,8 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
   const cleanup = () => {
     if (pingRef.current) clearInterval(pingRef.current);
     if (wsRef.current) {
+      wsRef.current.onerror = null;
+      wsRef.current.onclose = null;
       wsRef.current.close();
       wsRef.current = null;
     }
@@ -32,8 +34,13 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
   const connect = async (channelName: string) => {
     if (!channelName) return;
     cleanup();
-
+    let chatroomId: number | null = null;
     const slug = channelName.toLowerCase().trim();
+
+    // If a numeric chatroom ID was entered directly, skip the lookup
+    if (/^\d+$/.test(slug)) {
+      chatroomId = Number(slug);
+    }
 
     // Step 1: Resolve chatroom ID — try directly from the browser first (avoids
     // Cloudflare blocking server-side requests), then fall back to our proxy.
