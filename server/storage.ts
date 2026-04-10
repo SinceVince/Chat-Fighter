@@ -73,7 +73,6 @@ export class DatabaseStorage implements IStorage {
     const results = await db.select().from(streamSelections);
     if (results.length === 0) return null;
 
-    // Sort by updatedAt descending in JavaScript to avoid drizzle version issues
     results.sort((a, b) => {
       const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
       const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
