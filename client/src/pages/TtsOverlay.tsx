@@ -53,6 +53,21 @@ function useMouthFrames(fighter: Fighter | undefined) {
   return { closedUrl, openUrl };
 }
 
+// Toggles mouth open/closed at a flapping rate while speaking
+function useMouthFlap(speaking: boolean) {
+  const [mouthOpen, setMouthOpen] = useState(false);
+
+  useEffect(() => {
+    if (!speaking) { setMouthOpen(false); return; }
+    const interval = setInterval(() => {
+      setMouthOpen(prev => !prev);
+    }, 130);
+    return () => clearInterval(interval);
+  }, [speaking]);
+
+  return mouthOpen;
+}
+
 export default function TtsOverlay() {
   const params    = new URLSearchParams(window.location.search);
   const urlTwitch = params.get("channel") || params.get("twitch") || "";
@@ -78,8 +93,12 @@ export default function TtsOverlay() {
   const { closedUrl: p1Closed, openUrl: p1Open } = useMouthFrames(p1);
   const { closedUrl: p2Closed, openUrl: p2Open } = useMouthFrames(p2);
 
-  const p1ImgSrc = p1Speaking && p1Open ? p1Open : p1Closed ?? p1?.imageUrl;
-  const p2ImgSrc = p2Speaking && p2Open ? p2Open : p2Closed ?? p2?.imageUrl;
+  // Animate mouth flapping while speaking
+  const p1MouthOpen = useMouthFlap(p1Speaking);
+  const p2MouthOpen = useMouthFlap(p2Speaking);
+
+  const p1ImgSrc = p1Speaking && p1MouthOpen && p1Open ? p1Open : p1Closed ?? p1?.imageUrl;
+  const p2ImgSrc = p2Speaking && p2MouthOpen && p2Open ? p2Open : p2Closed ?? p2?.imageUrl;
 
   const pollSelection = useCallback(async (ch: string) => {
     try {
@@ -106,7 +125,6 @@ export default function TtsOverlay() {
     return () => clearInterval(interval);
   }, [pollSelection]);
 
-  // Poll immediately on mount
   useEffect(() => {
     pollSelection("");
   }, [pollSelection]);
@@ -282,34 +300,47 @@ export default function TtsOverlay() {
         </div>
       )}
 
-      {p1 && (
-        <FighterBot
-          fighter={p1}
-          imgSrc={p1ImgSrc}
-          side="left"
-          speaking={p1Speaking}
-          speechText={p1Text}
-          playerLabel="P1"
-          platformLabel="TWITCH"
-          playerColor="#6699ff"
-          platformColor="#9146FF"
-          platformTextColor="#fff"
-        />
-      )}
-
-      {p2 && (
-        <FighterBot
-          fighter={p2}
-          imgSrc={p2ImgSrc}
-          side="right"
-          speaking={p2Speaking}
-          speechText={p2Text}
-          playerLabel="P2"
-          platformLabel="KICK"
-          playerColor="#ff6666"
-          platformColor="#53FC18"
-          platformTextColor="#000"
-        />
+      {/* Both fighters side-by-side, centered at the bottom */}
+      {(p1 || p2) && (
+        <div style={{
+          position: "absolute",
+          bottom: 0,
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "flex-end",
+          gap: 20,
+        }}>
+          {p1 && (
+            <FighterBot
+              fighter={p1}
+              imgSrc={p1ImgSrc}
+              side="left"
+              speaking={p1Speaking}
+              speechText={p1Text}
+              playerLabel="P1"
+              platformLabel="TWITCH"
+              playerColor="#6699ff"
+              platformColor="#9146FF"
+              platformTextColor="#fff"
+            />
+          )}
+          {p2 && (
+            <FighterBot
+              fighter={p2}
+              imgSrc={p2ImgSrc}
+              side="right"
+              speaking={p2Speaking}
+              speechText={p2Text}
+              playerLabel="P2"
+              platformLabel="KICK"
+              playerColor="#ff6666"
+              platformColor="#53FC18"
+              platformTextColor="#000"
+            />
+          )}
+        </div>
       )}
     </div>
   );
@@ -333,21 +364,17 @@ function FighterBot({ fighter, imgSrc, side, speaking, speechText, playerLabel, 
 
   return (
     <div style={{
-      position: "absolute",
-      bottom: 0,
-      [isLeft ? "left" : "right"]: 40,
       display: "flex",
       flexDirection: "column",
-      alignItems: isLeft ? "flex-start" : "flex-end",
+      alignItems: "center",
     }}>
       <div style={{
-        maxWidth: 300,
+        maxWidth: 240,
         background: "rgba(0,0,0,0.90)",
         border: `2px solid ${playerColor}`,
         borderRadius: 10,
         padding: "9px 16px",
         marginBottom: 10,
-        [isLeft ? "marginLeft" : "marginRight"]: 24,
         fontSize: 13,
         lineHeight: 1.4,
         color: "#fff",
@@ -357,11 +384,12 @@ function FighterBot({ fighter, imgSrc, side, speaking, speechText, playerLabel, 
         opacity: speechText ? 1 : 0,
         transition: "opacity 0.3s ease",
         position: "relative",
+        textAlign: "center",
       }}>
         {speechText || " "}
         <div style={{
           position: "absolute", bottom: -11,
-          [isLeft ? "left" : "right"]: 22,
+          left: "50%", transform: "translateX(-50%)",
           width: 0, height: 0,
           borderLeft: "9px solid transparent", borderRight: "9px solid transparent",
           borderTop: `11px solid ${playerColor}`,
@@ -377,11 +405,11 @@ function FighterBot({ fighter, imgSrc, side, speaking, speechText, playerLabel, 
           height: 200,
           objectFit: "contain",
           imageRendering: "pixelated",
+          transform: isLeft ? "scaleX(1)" : "scaleX(-1)",
           filter: speaking
             ? `drop-shadow(0 0 22px ${playerColor}) brightness(1.18)`
             : `drop-shadow(0 0 8px ${playerColor}66)`,
-          transform: speaking ? "scale(1.04)" : "scale(1)",
-          transition: "transform 0.2s ease, filter 0.2s ease",
+          transition: "filter 0.2s ease",
         }}
       />
 
