@@ -53,7 +53,6 @@ function useMouthFrames(fighter: Fighter | undefined) {
   return { closedUrl, openUrl };
 }
 
-// Toggles mouth open/closed at a flapping rate while speaking
 function useMouthFlap(speaking: boolean) {
   const [mouthOpen, setMouthOpen] = useState(false);
 
@@ -93,7 +92,6 @@ export default function TtsOverlay() {
   const { closedUrl: p1Closed, openUrl: p1Open } = useMouthFrames(p1);
   const { closedUrl: p2Closed, openUrl: p2Open } = useMouthFrames(p2);
 
-  // Animate mouth flapping while speaking
   const p1MouthOpen = useMouthFlap(p1Speaking);
   const p2MouthOpen = useMouthFlap(p2Speaking);
 
@@ -141,20 +139,12 @@ export default function TtsOverlay() {
     setSpeaking(true);
     setText(job.text);
 
-    if (!window.speechSynthesis) {
-      setSpeaking(false); isSpeakingRef.current = false; processQueue(); return;
-    }
+    // P1 = female (Amy), P2 = male (Brian) — works in OBS
+    const voice = job.player === 1 ? "Amy" : "Brian";
+    const ttsUrl = `https://api.streamelements.com/kappa/v2/speech?voice=${voice}&text=${encodeURIComponent(job.text)}`;
 
-    window.speechSynthesis.cancel();
-    const utt  = new SpeechSynthesisUtterance(job.text);
-    utt.rate   = 0.95;
-    utt.pitch  = job.player === 1 ? 1.15 : 0.82;
-    utt.volume = 1.0;
-
-    const voices = window.speechSynthesis.getVoices();
-    utt.voice = job.player === 1
-      ? (voices.find(v => v.lang === "en-US" && /female|zira|samantha|karen/i.test(v.name)) || voices.find(v => v.lang === "en-US") || voices[0])
-      : (voices.find(v => v.lang === "en-US" && /male|david|alex|daniel/i.test(v.name))   || voices.find(v => v.lang === "en-US") || voices[0]);
+    const audio = new Audio(ttsUrl);
+    audio.volume = 1.0;
 
     const finish = () => {
       setSpeaking(false);
@@ -162,10 +152,11 @@ export default function TtsOverlay() {
       isSpeakingRef.current = false;
       processQueue();
     };
-    utt.onend   = finish;
-    utt.onerror = finish;
 
-    window.speechSynthesis.speak(utt);
+    audio.onended = finish;
+    audio.onerror = finish;
+
+    audio.play().catch(() => finish());
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const enqueueSpeech = useCallback((player: 1 | 2, text: string) => {
@@ -300,7 +291,6 @@ export default function TtsOverlay() {
         </div>
       )}
 
-      {/* Both fighters side-by-side, centered at the bottom */}
       {(p1 || p2) && (
         <div style={{
           position: "absolute",
