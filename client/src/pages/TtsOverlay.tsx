@@ -41,7 +41,6 @@ function useMouthFlap(speaking: boolean) {
 export default function TtsOverlay() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [speaking, setSpeaking] = useState<1 | 2 | null>(null);
-  const [activePlayer, setActivePlayer] = useState<1 | 2 | null>(null);
 
   const speechQueueRef = useRef<SpeechJob[]>([]);
   const isSpeakingRef = useRef(false);
@@ -52,35 +51,33 @@ export default function TtsOverlay() {
     isSpeakingRef.current = true;
 
     setSpeaking(job.player);
-    setActivePlayer(job.player);
 
     const url = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(job.text)}`;
     const audio = new Audio(url);
 
-    audio.addEventListener("ended", () => {
+    const finish = () => {
       isSpeakingRef.current = false;
       setSpeaking(null);
       setTimeout(() => processQueue(), 300);
-    });
+    };
+
+    audio.addEventListener("ended", finish);
 
     audio.addEventListener("error", (e) => {
-      console.error("TTS audio error:", e, "URL was:", url);
-      isSpeakingRef.current = false;
-      setSpeaking(null);
-      setTimeout(() => processQueue(), 300);
+      console.error("TTS audio error:", e, "URL:", url);
+      finish();
     });
 
     audio.play().catch((err) => {
       console.error("TTS play() failed:", err);
-      isSpeakingRef.current = false;
-      setSpeaking(null);
-      setTimeout(() => processQueue(), 300);
+      finish();
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const enqueueSpeech = useCallback(
     (text: string, player: 1 | 2) => {
-      speechQueueRef.current.push({ text, player });
+      if (!text.trim()) return;
+      speechQueueRef.current.push({ text: text.trim(), player });
       processQueue();
     },
     [processQueue]
@@ -117,25 +114,25 @@ export default function TtsOverlay() {
     return () => clearInterval(interval);
   }, [pollSelection]);
 
+  // Parse !tts / !say commands from Twitch (player 1)
   useTwitchControls({
-    onSay: (text, channel) => {
-      pollSelection(channel);
-      enqueueSpeech(text, 1);
-    },
-    onTts: (text, channel) => {
-      pollSelection(channel);
-      enqueueSpeech(text, 1);
+    onCommand: (_user, cmd) => {
+      if (cmd.startsWith("!tts ")) {
+        enqueueSpeech(cmd.slice(5), 1);
+      } else if (cmd.startsWith("!say ")) {
+        enqueueSpeech(cmd.slice(5), 1);
+      }
     },
   });
 
+  // Parse !tts / !say commands from Kick (player 2)
   useKickControls({
-    onSay: (text, channel) => {
-      pollSelection(channel);
-      enqueueSpeech(text, 2);
-    },
-    onTts: (text, channel) => {
-      pollSelection(channel);
-      enqueueSpeech(text, 2);
+    onCommand: (_user, cmd) => {
+      if (cmd.startsWith("!tts ")) {
+        enqueueSpeech(cmd.slice(5), 2);
+      } else if (cmd.startsWith("!say ")) {
+        enqueueSpeech(cmd.slice(5), 2);
+      }
     },
   });
 
