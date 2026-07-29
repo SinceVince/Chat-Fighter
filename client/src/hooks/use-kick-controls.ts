@@ -38,10 +38,8 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
     let chatroomId: number | null = null;
 
     if (/^\d+$/.test(slug)) {
-      // User entered a numeric chatroom ID directly — skip lookup
       chatroomId = Number(slug);
     } else {
-      // 1a. Direct browser fetch
       for (const url of [
         `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
         `https://kick.com/api/v1/channels/${encodeURIComponent(slug)}`,
@@ -54,7 +52,6 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
         } catch { /* cors / network error — try next */ }
       }
 
-      // 1b. Server-side proxy fallback
       if (!chatroomId) {
         try {
           const res = await fetch(`/api/kick-channel/${encodeURIComponent(slug)}`, {
@@ -77,7 +74,6 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
       return;
     }
 
-    // Connect to Pusher WebSocket
     const ws = new WebSocket(PUSHER_URL);
     wsRef.current = ws;
 
@@ -155,3 +151,16 @@ export function useKickControls({ onCommand }: UseKickControlsProps) {
       }
     };
   };
+
+  const disconnect = () => {
+    cleanup();
+    setIsConnected(false);
+    setChannel("");
+    toast({
+      title: "Disconnected from Kick",
+      description: "Kick chat disconnected.",
+    });
+  };
+
+  return { connect, disconnect, isConnected, channel };
+}
