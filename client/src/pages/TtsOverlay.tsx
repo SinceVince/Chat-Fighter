@@ -62,12 +62,10 @@ export default function TtsOverlay() {
     };
 
     audio.addEventListener("ended", finish);
-
     audio.addEventListener("error", (e) => {
       console.error("TTS audio error:", e, "URL:", url);
       finish();
     });
-
     audio.play().catch((err) => {
       console.error("TTS play() failed:", err);
       finish();
@@ -83,7 +81,6 @@ export default function TtsOverlay() {
     [processQueue]
   );
 
-  // Poll for latest fighter selection
   const pollSelection = useCallback(async (channel: string) => {
     try {
       if (channel) {
@@ -103,18 +100,15 @@ export default function TtsOverlay() {
     }
   }, []);
 
-  // Initial load
   useEffect(() => {
     pollSelection("");
   }, [pollSelection]);
 
-  // Polling interval
   useEffect(() => {
     const interval = setInterval(() => pollSelection(""), 3000);
     return () => clearInterval(interval);
   }, [pollSelection]);
 
-  // Parse !tts / !say commands from Twitch (player 1)
   useTwitchControls({
     onCommand: (_user, cmd) => {
       if (cmd.startsWith("!tts ")) {
@@ -125,7 +119,6 @@ export default function TtsOverlay() {
     },
   });
 
-  // Parse !tts / !say commands from Kick (player 2)
   useKickControls({
     onCommand: (_user, cmd) => {
       if (cmd.startsWith("!tts ")) {
