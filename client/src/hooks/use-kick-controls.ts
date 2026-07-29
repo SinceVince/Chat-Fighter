@@ -1,175 +1,194 @@
-import { useState, useEffect, useRef } from "react";
-import { useToast } from "@/hooks/use-toast";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useTwitchControls } from "@/hooks/use-twitch-controls";
+import { useKickControls } from "@/hooks/use-kick-controls";
 
-const PUSHER_URL = "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0&flash=false";
-
-interface UseKickControlsProps {
-  onCommand: (user: string, cmd: string) => void;
+interface Fighter {
+  id: number;
+  name: string;
+  imageUrl: string;
 }
 
-export function useKickControls({ onCommand }: UseKickControlsProps) {
-  const [channel, setChannel] = useState<string>("");
-  const [isConnected, setIsConnected] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const { toast } = useToast();
+interface Selection {
+  p1Fighter?: Fighter;
+  p2Fighter?: Fighter;
+}
 
-  useEffect(() => {
-    return () => {
-      cleanup();
-    };
-  }, []);
+type SpeechJob = { text: string; player: 1 | 2 };
 
-  const cleanup = () => {
-    if (pingRef.current) clearInterval(pingRef.current);
-    if (wsRef.current) {
-      wsRef.current.onerror = null;
-      wsRef.current.onclose = null;
-      wsRef.current.close();
-      wsRef.current = null;
-    }
+function getMouthUrls(imageUrl: string) {
+  const base = imageUrl.replace(/\.(png|jpg|jpeg|gif|webp)$/i, "");
+  return {
+    closed: `${base}close.png`,
+    open: `${base}open.png`,
   };
+}
 
-  const connect = async (channelName: string) => {
-    if (!channelName) return;
-    cleanup();
-
-    const slug = channelName.toLowerCase().trim();
-    let chatroomId: number | null = null;
-
-    if (/^\d+$/.test(slug)) {
-      // User entered a numeric chatroom ID directly — skip lookup
-      chatroomId = Number(slug);
-    } else {
-      // 1a. Direct browser fetch
-      for (const url of [
-        `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
-        `https://kick.com/api/v1/channels/${encodeURIComponent(slug)}`,
-      ]) {
-        try {
-          const r = await fetch(url, { headers: { Accept: "application/json" } });
-          if (!r.ok) continue;
-          const d = await r.json();
-          if (d?.chatroom?.id) { chatroomId = d.chatroom.id; break; }
-        } catch { /* cors / network error — try next */ }
-      }
-
-      // 1b. Server-side proxy fallback
-      if (!chatroomId) {
-        try {
-          const res = await fetch(`/api/kick-channel/${encodeURIComponent(slug)}`, {
-            signal: AbortSignal.timeout(8000),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            chatroomId = data.chatroomId ?? null;
-          }
-        } catch { /* ignore */ }
-      }
-    }
-
-    if (!chatroomId) {
-      toast({
-        variant: "destructive",
-        title: "Kick Channel Not Found",
-        description: `Could not find Kick channel "${channelName}". Check the channel name and try again.`,
-      });
+function useMouthFlap(speaking: boolean) {
+  const [isOpen, setIsOpen] = useState(false);
+  useEffect(() => {
+    if (!speaking) {
+      setIsOpen(false);
       return;
     }
-
-    // Connect to Pusher WebSocket
-    const ws = new WebSocket(PUSHER_URL);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({
-        event: "pusher:subscribe",
-        data: { auth: "", channel: `chatrooms.${chatroomId}.v2` },
-      }));
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-
-        if (msg.event === "pusher:ping") {
-          ws.send(JSON.stringify({ event: "pusher:pong", data: {} }));
-          return;
-        }
-
-        if (msg.event === "pusher_internal:subscription_error") {
-          setIsConnected(false);
-          toast({
-            variant: "destructive",
-            title: "Kick Subscription Failed",
-            description: `Could not subscribe to chatroom ${chatroomId}. Check the ID is correct.`,
-          });
-          ws.close();
-          return;
-        }
-
-        if (msg.event === "pusher_internal:subscription_succeeded") {
-          setChannel(slug);
-          setIsConnected(true);
-          toast({
-            title: "Connected to Kick",
-            description: `Listening to kick.com/${slug}`,
-          });
-          pingRef.current = setInterval(() => {
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ event: "pusher:ping", data: {} }));
-            }
-          }, 30000);
-          return;
-        }
-
-        if (msg.event === "App\\Events\\ChatMessageEvent") {
-          const payload = typeof msg.data === "string" ? JSON.parse(msg.data) : msg.data;
-          const content: string = payload?.content || "";
-          const username: string = payload?.sender?.username || payload?.sender?.slug || "Anonymous";
-          const cmd = content.toLowerCase().trim();
-          onCommand(username, cmd);
-        }
-      } catch {
-        // Ignore malformed messages
-      }
-    };
-
-    ws.onerror = () => {
-      setIsConnected(false);
-      toast({
-        variant: "destructive",
-        title: "Kick Connection Error",
-        description: "Lost connection to Kick chat.",
-      });
-    };
-
-    ws.onclose = (event) => {
-      setIsConnected(false);
-      if (!event.wasClean && event.code !== 1000) {
-        toast({
-          variant: "destructive",
-          title: "Kick Disconnected",
-          description: `Connection closed (code ${event.code}). Try reconnecting.`,
-        });
-      }
-    };
-  };
-
-  const disconnect = () => {
-    cleanup();
-    setIsConnected(false);
-    setChannel("");
-    toast({
-      title: "Disconnected from Kick",
-      description: "Kick chat disconnected.",
-    });
-  };
-
-  return {
-    connect,
-    disconnect,
-    isConnected,
-    channel,
-  };
+    const interval = setInterval(() => {
+      setIsOpen((prev) => !prev);
+    }, 130);
+    return () => clearInterval(interval);
+  }, [speaking]);
+  return isOpen;
 }
+
+export default function TtsOverlay() {
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const [speaking, setSpeaking] = useState<1 | 2 | null>(null);
+
+  const speechQueueRef = useRef<SpeechJob[]>([]);
+  const isSpeakingRef = useRef(false);
+
+  const processQueue = useCallback(() => {
+    if (isSpeakingRef.current || speechQueueRef.current.length === 0) return;
+    const job = speechQueueRef.current.shift()!;
+    isSpeakingRef.current = true;
+
+    setSpeaking(job.player);
+
+    const url = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(job.text)}`;
+    const audio = new Audio(url);
+
+    const finish = () => {
+      isSpeakingRef.current = false;
+      setSpeaking(null);
+      setTimeout(() => processQueue(), 300);
+    };
+
+    audio.addEventListener("ended", finish);
+
+    audio.addEventListener("error", (e) => {
+      console.error("TTS audio error:", e, "URL:", url);
+      finish();
+    });
+
+    audio.play().catch((err) => {
+      console.error("TTS play() failed:", err);
+      finish();
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const enqueueSpeech = useCallback(
+    (text: string, player: 1 | 2) => {
+      if (!text.trim()) return;
+      speechQueueRef.current.push({ text: text.trim(), player });
+      processQueue();
+    },
+    [processQueue]
+  );
+
+  // Poll for latest fighter selection
+  const pollSelection = useCallback(async (channel: string) => {
+    try {
+      if (channel) {
+        const res = await fetch(`/api/selections/${encodeURIComponent(channel)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.p1Fighter || data.p2Fighter) {
+            setSelection(data);
+            return;
+          }
+        }
+      }
+      const res2 = await fetch(`/api/selections/latest`);
+      if (res2.ok) setSelection(await res2.json());
+    } catch {
+      /* silent */
+    }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    pollSelection("");
+  }, [pollSelection]);
+
+  // Polling interval
+  useEffect(() => {
+    const interval = setInterval(() => pollSelection(""), 3000);
+    return () => clearInterval(interval);
+  }, [pollSelection]);
+
+  // Parse !tts / !say commands from Twitch (player 1)
+  useTwitchControls({
+    onCommand: (_user, cmd) => {
+      if (cmd.startsWith("!tts ")) {
+        enqueueSpeech(cmd.slice(5), 1);
+      } else if (cmd.startsWith("!say ")) {
+        enqueueSpeech(cmd.slice(5), 1);
+      }
+    },
+  });
+
+  // Parse !tts / !say commands from Kick (player 2)
+  useKickControls({
+    onCommand: (_user, cmd) => {
+      if (cmd.startsWith("!tts ")) {
+        enqueueSpeech(cmd.slice(5), 2);
+      } else if (cmd.startsWith("!say ")) {
+        enqueueSpeech(cmd.slice(5), 2);
+      }
+    },
+  });
+
+  const p1Speaking = speaking === 1;
+  const p2Speaking = speaking === 2;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "transparent",
+        display: "flex",
+        alignItems: "flex-end",
+        justifyContent: "center",
+        paddingBottom: 0,
+        gap: 20,
+      }}
+    >
+      {!selection?.p1Fighter && !selection?.p2Fighter ? (
+        <div style={{ color: "white", fontFamily: "monospace", fontSize: 14 }}>
+          Waiting for fighters to be selected...
+        </div>
+      ) : (
+        <>
+          {selection?.p1Fighter && (
+            <FighterCard
+              fighter={selection.p1Fighter}
+              player={1}
+              isSpeaking={p1Speaking}
+              mirrored={false}
+            />
+          )}
+          {selection?.p2Fighter && (
+            <FighterCard
+              fighter={selection.p2Fighter}
+              player={2}
+              isSpeaking={p2Speaking}
+              mirrored={true}
+            />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function FighterCard({
+  fighter,
+  player,
+  isSpeaking,
+  mirrored,
+}: {
+  fighter: Fighter;
+  player: 1 | 2;
+  isSpeaking: boolean;
+  mirrored: boolean;
+}) {
+  const
