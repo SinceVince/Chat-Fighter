@@ -1,194 +1,64 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useTwitchControls } from "@/hooks/use-twitch-controls";
-import { useKickControls } from "@/hooks/use-kick-controls";
+import { useState, useEffect } from "react";
+import tmi from "tmi.js";
+import { useToast } from "@/hooks/use-toast";
 
-interface Fighter {
-  id: number;
-  name: string;
-  imageUrl: string;
+interface UseTwitchControlsProps {
+  onCommand: (user: string, cmd: string) => void;
 }
 
-interface Selection {
-  p1Fighter?: Fighter;
-  p2Fighter?: Fighter;
-}
+export function useTwitchControls({ onCommand }: UseTwitchControlsProps) {
+  const [client, setClient] = useState<tmi.Client | null>(null);
+  const [channel, setChannel] = useState<string>("");
+  const [isConnected, setIsConnected] = useState(false);
+  const { toast } = useToast();
 
-type SpeechJob = { text: string; player: 1 | 2 };
-
-function getMouthUrls(imageUrl: string) {
-  const base = imageUrl.replace(/\.(png|jpg|jpeg|gif|webp)$/i, "");
-  return {
-    closed: `${base}close.png`,
-    open: `${base}open.png`,
-  };
-}
-
-function useMouthFlap(speaking: boolean) {
-  const [isOpen, setIsOpen] = useState(false);
   useEffect(() => {
-    if (!speaking) {
-      setIsOpen(false);
-      return;
-    }
-    const interval = setInterval(() => {
-      setIsOpen((prev) => !prev);
-    }, 130);
-    return () => clearInterval(interval);
-  }, [speaking]);
-  return isOpen;
-}
-
-export default function TtsOverlay() {
-  const [selection, setSelection] = useState<Selection | null>(null);
-  const [speaking, setSpeaking] = useState<1 | 2 | null>(null);
-
-  const speechQueueRef = useRef<SpeechJob[]>([]);
-  const isSpeakingRef = useRef(false);
-
-  const processQueue = useCallback(() => {
-    if (isSpeakingRef.current || speechQueueRef.current.length === 0) return;
-    const job = speechQueueRef.current.shift()!;
-    isSpeakingRef.current = true;
-
-    setSpeaking(job.player);
-
-    const url = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(job.text)}`;
-    const audio = new Audio(url);
-
-    const finish = () => {
-      isSpeakingRef.current = false;
-      setSpeaking(null);
-      setTimeout(() => processQueue(), 300);
+    return () => {
+      if (client) client.disconnect().catch(console.error);
     };
+  }, [client]);
 
-    audio.addEventListener("ended", finish);
+  const connect = async (channelName: string) => {
+    if (!channelName) return;
+    if (client) await client.disconnect().catch(() => {});
 
-    audio.addEventListener("error", (e) => {
-      console.error("TTS audio error:", e, "URL:", url);
-      finish();
+    const slug = channelName.toLowerCase().trim();
+    const newClient = new tmi.Client({ channels: [slug] });
+
+    newClient.on("message", (_ch, tags, message, self) => {
+      if (self) return;
+      const cmd = message.toLowerCase().trim();
+      const user = tags["display-name"] || "Anonymous";
+      onCommand(user, cmd);
     });
 
-    audio.play().catch((err) => {
-      console.error("TTS play() failed:", err);
-      finish();
-    });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const enqueueSpeech = useCallback(
-    (text: string, player: 1 | 2) => {
-      if (!text.trim()) return;
-      speechQueueRef.current.push({ text: text.trim(), player });
-      processQueue();
-    },
-    [processQueue]
-  );
-
-  // Poll for latest fighter selection
-  const pollSelection = useCallback(async (channel: string) => {
     try {
-      if (channel) {
-        const res = await fetch(`/api/selections/${encodeURIComponent(channel)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.p1Fighter || data.p2Fighter) {
-            setSelection(data);
-            return;
-          }
-        }
-      }
-      const res2 = await fetch(`/api/selections/latest`);
-      if (res2.ok) setSelection(await res2.json());
+      await newClient.connect();
+      setClient(newClient);
+      setChannel(slug);
+      setIsConnected(true);
+      toast({
+        title: "Connected to Twitch",
+        description: `Listening to #${channelName}`,
+      });
     } catch {
-      /* silent */
+      toast({
+        variant: "destructive",
+        title: "Twitch Connection Failed",
+        description: "Could not connect to Twitch chat.",
+      });
+      setIsConnected(false);
     }
-  }, []);
+  };
 
-  // Initial load
-  useEffect(() => {
-    pollSelection("");
-  }, [pollSelection]);
+  const disconnect = async () => {
+    if (client) {
+      await client.disconnect();
+      setClient(null);
+      setIsConnected(false);
+      setChannel("");
+    }
+  };
 
-  // Polling interval
-  useEffect(() => {
-    const interval = setInterval(() => pollSelection(""), 3000);
-    return () => clearInterval(interval);
-  }, [pollSelection]);
-
-  // Parse !tts / !say commands from Twitch (player 1)
-  useTwitchControls({
-    onCommand: (_user, cmd) => {
-      if (cmd.startsWith("!tts ")) {
-        enqueueSpeech(cmd.slice(5), 1);
-      } else if (cmd.startsWith("!say ")) {
-        enqueueSpeech(cmd.slice(5), 1);
-      }
-    },
-  });
-
-  // Parse !tts / !say commands from Kick (player 2)
-  useKickControls({
-    onCommand: (_user, cmd) => {
-      if (cmd.startsWith("!tts ")) {
-        enqueueSpeech(cmd.slice(5), 2);
-      } else if (cmd.startsWith("!say ")) {
-        enqueueSpeech(cmd.slice(5), 2);
-      }
-    },
-  });
-
-  const p1Speaking = speaking === 1;
-  const p2Speaking = speaking === 2;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "transparent",
-        display: "flex",
-        alignItems: "flex-end",
-        justifyContent: "center",
-        paddingBottom: 0,
-        gap: 20,
-      }}
-    >
-      {!selection?.p1Fighter && !selection?.p2Fighter ? (
-        <div style={{ color: "white", fontFamily: "monospace", fontSize: 14 }}>
-          Waiting for fighters to be selected...
-        </div>
-      ) : (
-        <>
-          {selection?.p1Fighter && (
-            <FighterCard
-              fighter={selection.p1Fighter}
-              player={1}
-              isSpeaking={p1Speaking}
-              mirrored={false}
-            />
-          )}
-          {selection?.p2Fighter && (
-            <FighterCard
-              fighter={selection.p2Fighter}
-              player={2}
-              isSpeaking={p2Speaking}
-              mirrored={true}
-            />
-          )}
-        </>
-      )}
-    </div>
-  );
+  return { connect, disconnect, isConnected, channel };
 }
-
-function FighterCard({
-  fighter,
-  player,
-  isSpeaking,
-  mirrored,
-}: {
-  fighter: Fighter;
-  player: 1 | 2;
-  isSpeaking: boolean;
-  mirrored: boolean;
-}) {
-  const
