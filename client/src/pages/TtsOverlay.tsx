@@ -50,7 +50,7 @@ export default function TtsOverlay() {
   const twitchChannel = params.get("twitch") || params.get("channel") || "";
   const kickChannel = params.get("kick") || "";
 
-  const processQueue = useCallback(async () => {
+  const processQueue = useCallback(() => {
     if (isSpeakingRef.current || speechQueueRef.current.length === 0) return;
     const job = speechQueueRef.current.shift()!;
     isSpeakingRef.current = true;
@@ -62,31 +62,19 @@ export default function TtsOverlay() {
       setTimeout(() => processQueue(), 300);
     };
 
-    try {
-      const url = `/api/tts?text=${encodeURIComponent(job.text)}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
+    const url = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(job.text)}`;
+    const audio = new Audio(url);
+    audioRef.current = audio;
 
-      const audio = new Audio(blobUrl);
-      audioRef.current = audio;
-
-      audio.addEventListener("ended", () => {
-        URL.revokeObjectURL(blobUrl);
-        finish();
-      });
-      audio.addEventListener("error", (e) => {
-        console.error("TTS audio error:", e);
-        URL.revokeObjectURL(blobUrl);
-        finish();
-      });
-
-      await audio.play();
-    } catch (err) {
-      console.error("TTS failed:", err);
+    audio.addEventListener("ended", finish);
+    audio.addEventListener("error", (e) => {
+      console.error("TTS audio error:", e);
       finish();
-    }
+    });
+    audio.play().catch((err) => {
+      console.error("TTS play() failed:", err);
+      finish();
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const enqueueSpeech = useCallback(
