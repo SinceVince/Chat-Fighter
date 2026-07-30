@@ -45,6 +45,11 @@ export default function TtsOverlay() {
   const speechQueueRef = useRef<SpeechJob[]>([]);
   const isSpeakingRef = useRef(false);
 
+  // Read channel names from URL params: ?twitch=channelname&kick=channelname
+  const params = new URLSearchParams(window.location.search);
+  const twitchChannel = params.get("twitch") || "";
+  const kickChannel = params.get("kick") || "";
+
   const processQueue = useCallback(() => {
     if (isSpeakingRef.current || speechQueueRef.current.length === 0) return;
     const job = speechQueueRef.current.shift()!;
@@ -81,167 +86,34 @@ export default function TtsOverlay() {
     [processQueue]
   );
 
-  const pollSelection = useCallback(async (channel: string) => {
+  const pollSelection = useCallback(async () => {
     try {
-      if (channel) {
-        const res = await fetch(`/api/selections/${encodeURIComponent(channel)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.p1Fighter || data.p2Fighter) {
-            setSelection(data);
-            return;
-          }
-        }
-      }
-      const res2 = await fetch(`/api/selections/latest`);
-      if (res2.ok) setSelection(await res2.json());
+      const res = await fetch(`/api/selections/latest`);
+      if (res.ok) setSelection(await res.json());
     } catch {
       /* silent */
     }
   }, []);
 
   useEffect(() => {
-    pollSelection("");
+    pollSelection();
   }, [pollSelection]);
 
   useEffect(() => {
-    const interval = setInterval(() => pollSelection(""), 3000);
+    const interval = setInterval(() => pollSelection(), 3000);
     return () => clearInterval(interval);
   }, [pollSelection]);
 
-  useTwitchControls({
+  // Twitch — auto-connect on load if ?twitch= is set
+  const { connect: connectTwitch } = useTwitchControls({
     onCommand: (_user, cmd) => {
-      if (cmd.startsWith("!tts ")) {
-        enqueueSpeech(cmd.slice(5), 1);
-      } else if (cmd.startsWith("!say ")) {
-        enqueueSpeech(cmd.slice(5), 1);
-      }
+      if (cmd.startsWith("!tts ")) enqueueSpeech(cmd.slice(5), 1);
+      else if (cmd.startsWith("!say ")) enqueueSpeech(cmd.slice(5), 1);
     },
   });
 
-  useKickControls({
-    onCommand: (_user, cmd) => {
-      if (cmd.startsWith("!tts ")) {
-        enqueueSpeech(cmd.slice(5), 2);
-      } else if (cmd.startsWith("!say ")) {
-        enqueueSpeech(cmd.slice(5), 2);
-      }
-    },
-  });
+  useEffect(() => {
+    if (twitchChannel) connectTwitch(twitchChannel);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const p1Speaking = speaking === 1;
-  const p2Speaking = speaking === 2;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "transparent",
-        display: "flex",
-        alignItems: "flex-end",
-        justifyContent: "center",
-        paddingBottom: 0,
-        gap: 20,
-      }}
-    >
-      {!selection?.p1Fighter && !selection?.p2Fighter ? (
-        <div style={{ color: "white", fontFamily: "monospace", fontSize: 14 }}>
-          Waiting for fighters to be selected...
-        </div>
-      ) : (
-        <>
-          {selection?.p1Fighter && (
-            <FighterCard
-              fighter={selection.p1Fighter}
-              player={1}
-              isSpeaking={p1Speaking}
-              mirrored={false}
-            />
-          )}
-          {selection?.p2Fighter && (
-            <FighterCard
-              fighter={selection.p2Fighter}
-              player={2}
-              isSpeaking={p2Speaking}
-              mirrored={true}
-            />
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-function FighterCard({
-  fighter,
-  player,
-  isSpeaking,
-  mirrored,
-}: {
-  fighter: Fighter;
-  player: 1 | 2;
-  isSpeaking: boolean;
-  mirrored: boolean;
-}) {
-  const mouthOpen = useMouthFlap(isSpeaking);
-  const { closed, open } = getMouthUrls(fighter.imageUrl);
-  const imgSrc = isSpeaking && mouthOpen ? open : closed;
-
-  const playerColor = player === 1 ? "#00aaff" : "#ff4444";
-  const playerLabel = player === 1 ? "P1" : "P2";
-  const platformColor = player === 1 ? "#9146ff" : "#53fc18";
-  const platformTextColor = player === 1 ? "#fff" : "#000";
-  const platformLabel = player === 1 ? "TWITCH" : "KICK";
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        transform: mirrored ? "scaleX(-1)" : "none",
-      }}
-    >
-      <img
-        data-testid={`tts-fighter-${player === 1 ? "left" : "right"}`}
-        src={imgSrc}
-        alt={fighter.name}
-        style={{
-          width: 200,
-          height: 200,
-          objectFit: "contain",
-          imageRendering: "pixelated",
-        }}
-      />
-      <div
-        style={{
-          transform: mirrored ? "scaleX(-1)" : "none",
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          background: "rgba(0,0,0,0.6)",
-          padding: "2px 6px",
-          borderRadius: 4,
-        }}
-      >
-        <span
-          style={{
-            background: platformColor,
-            color: platformTextColor,
-            fontSize: 8,
-            fontFamily: "monospace",
-            fontWeight: "bold",
-            padding: "1px 5px",
-            borderRadius: 2,
-          }}
-        >
-          {platformLabel}
-        </span>
-        <span style={{ color: playerColor, fontSize: 10, fontFamily: "monospace" }}>
-          [{playerLabel}] {fighter.name.toUpperCase()}
-        </span>
-      </div>
-    </div>
-  );
-}
+  // Kick — auto-connect on load if ?kick= is set
