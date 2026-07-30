@@ -70,6 +70,22 @@ export async function registerRoutes(
     res.status(404).json({ message: "Kick channel not found. Make sure the channel name is correct." });
   });
 
+  // TTS proxy — avoids CORS when fetching audio from StreamElements
+  app.get("/api/tts", async (req, res) => {
+    const text = req.query.text as string;
+    if (!text) return res.status(400).json({ message: "Missing text" });
+    try {
+      const url = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(text)}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`StreamElements error ${response.status}`);
+      const buffer = await response.arrayBuffer();
+      res.set("Content-Type", "audio/mpeg");
+      res.send(Buffer.from(buffer));
+    } catch (err) {
+      res.status(500).json({ message: "TTS fetch failed" });
+    }
+  });
+
   app.use("/api/selections", (req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
