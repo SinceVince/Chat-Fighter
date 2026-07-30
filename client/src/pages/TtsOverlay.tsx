@@ -44,6 +44,7 @@ export default function TtsOverlay() {
 
   const speechQueueRef = useRef<SpeechJob[]>([]);
   const isSpeakingRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const params = new URLSearchParams(window.location.search);
   const twitchChannel = params.get("twitch") || params.get("channel") || "";
@@ -57,6 +58,7 @@ export default function TtsOverlay() {
 
     const url = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(job.text)}`;
     const audio = new Audio(url);
+    audioRef.current = audio;
 
     const finish = () => {
       isSpeakingRef.current = false;
@@ -119,6 +121,7 @@ export default function TtsOverlay() {
   useEffect(() => {
     if (kickChannel) connectKick(kickChannel);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const p1Speaking = speaking === 1;
   const p2Speaking = speaking === 2;
 
