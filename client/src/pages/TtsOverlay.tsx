@@ -50,15 +50,11 @@ export default function TtsOverlay() {
   const twitchChannel = params.get("twitch") || params.get("channel") || "";
   const kickChannel = params.get("kick") || "";
 
-  const processQueue = useCallback(() => {
+  const processQueue = useCallback(async () => {
     if (isSpeakingRef.current || speechQueueRef.current.length === 0) return;
     const job = speechQueueRef.current.shift()!;
     isSpeakingRef.current = true;
     setSpeaking(job.player);
-
-    const url = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(job.text)}`;
-    const audio = new Audio(url);
-    audioRef.current = audio;
 
     const finish = () => {
       isSpeakingRef.current = false;
@@ -66,15 +62,31 @@ export default function TtsOverlay() {
       setTimeout(() => processQueue(), 300);
     };
 
-    audio.addEventListener("ended", finish);
-    audio.addEventListener("error", (e) => {
-      console.error("TTS audio error:", e, "URL:", url);
+    try {
+      const url = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(job.text)}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      const audio = new Audio(blobUrl);
+      audioRef.current = audio;
+
+      audio.addEventListener("ended", () => {
+        URL.revokeObjectURL(blobUrl);
+        finish();
+      });
+      audio.addEventListener("error", (e) => {
+        console.error("TTS audio error:", e);
+        URL.revokeObjectURL(blobUrl);
+        finish();
+      });
+
+      await audio.play();
+    } catch (err) {
+      console.error("TTS failed:", err);
       finish();
-    });
-    audio.play().catch((err) => {
-      console.error("TTS play() failed:", err);
-      finish();
-    });
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const enqueueSpeech = useCallback(
