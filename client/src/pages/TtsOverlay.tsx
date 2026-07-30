@@ -46,7 +46,7 @@ export default function TtsOverlay() {
   const isSpeakingRef = useRef(false);
 
   const params = new URLSearchParams(window.location.search);
-  const twitchChannel = params.get("twitch") || "";
+  const twitchChannel = params.get("twitch") || params.get("channel") || "";
   const kickChannel = params.get("kick") || "";
 
   const processQueue = useCallback(() => {
