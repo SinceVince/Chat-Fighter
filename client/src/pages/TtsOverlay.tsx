@@ -63,7 +63,7 @@ export default function TtsOverlay() {
     };
 
     try {
-      const url = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(job.text)}`;
+      const url = `/api/tts?text=${encodeURIComponent(job.text)}`;
       const response = await fetch(url);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const blob = await response.blob();
